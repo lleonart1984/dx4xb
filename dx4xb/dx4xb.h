@@ -58,9 +58,10 @@ namespace dx4xb {
 	
 	// Public definitions
 
-	struct DeviceInitializationDescription;
+	struct PresenterDescription;
 	class GPUProcess; // Defines types can populate command lists for further GPU execution
 	class DeviceManager; // Defines types can create resources and dispatch GPU processes
+	class Presenter; // Defines a Device manager that can control swap chains and presenting buffers
 	class CommandListManager;
 
 
@@ -2924,7 +2925,7 @@ namespace dx4xb {
 
 
 
-	const float PI = 3.141592653589793;
+	const float PI = 3.141592653589793f;
 #pragma region abs
 	static float abs(const float& v) { return fabsf(v); }
 
@@ -3265,29 +3266,29 @@ namespace dx4xb {
 
 
 #pragma region degrees
-	static float degrees(const float& v) { return (v * 180.0 / PI); }
+	static float degrees(const float& v) { return (v * 180.0f / PI); }
 
-	static float1 degrees(const float1& v) { return float1((v.x * 180.0 / PI)); }
-	static float2 degrees(const float2& v) { return float2((v.x * 180.0 / PI), (v.y * 180.0 / PI)); }
-	static float3 degrees(const float3& v) { return float3((v.x * 180.0 / PI), (v.y * 180.0 / PI), (v.z * 180.0 / PI)); }
-	static float4 degrees(const float4& v) { return float4((v.x * 180.0 / PI), (v.y * 180.0 / PI), (v.z * 180.0 / PI), (v.w * 180.0 / PI)); }
+	static float1 degrees(const float1& v) { return float1((v.x * 180.0f / PI)); }
+	static float2 degrees(const float2& v) { return float2((v.x * 180.0f / PI), (v.y * 180.0f / PI)); }
+	static float3 degrees(const float3& v) { return float3((v.x * 180.0f / PI), (v.y * 180.0f / PI), (v.z * 180.0f / PI)); }
+	static float4 degrees(const float4& v) { return float4((v.x * 180.0f / PI), (v.y * 180.0f / PI), (v.z * 180.0f / PI), (v.w * 180.0f / PI)); }
 
-	static float1x1 degrees(const float1x1& v) { return float1x1((v._m00 * 180.0 / PI)); }
-	static float1x2 degrees(const float1x2& v) { return float1x2((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI)); }
-	static float1x3 degrees(const float1x3& v) { return float1x3((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI)); }
-	static float1x4 degrees(const float1x4& v) { return float1x4((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m03 * 180.0 / PI)); }
-	static float2x1 degrees(const float2x1& v) { return float2x1((v._m00 * 180.0 / PI), (v._m10 * 180.0 / PI)); }
-	static float2x2 degrees(const float2x2& v) { return float2x2((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI)); }
-	static float2x3 degrees(const float2x3& v) { return float2x3((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI)); }
-	static float2x4 degrees(const float2x4& v) { return float2x4((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m03 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI), (v._m13 * 180.0 / PI)); }
-	static float3x1 degrees(const float3x1& v) { return float3x1((v._m00 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m20 * 180.0 / PI)); }
-	static float3x2 degrees(const float3x2& v) { return float3x2((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI)); }
-	static float3x3 degrees(const float3x3& v) { return float3x3((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI), (v._m22 * 180.0 / PI)); }
-	static float3x4 degrees(const float3x4& v) { return float3x4((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m03 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI), (v._m13 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI), (v._m22 * 180.0 / PI), (v._m23 * 180.0 / PI)); }
-	static float4x1 degrees(const float4x1& v) { return float4x1((v._m00 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m30 * 180.0 / PI)); }
-	static float4x2 degrees(const float4x2& v) { return float4x2((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI), (v._m30 * 180.0 / PI), (v._m31 * 180.0 / PI)); }
-	static float4x3 degrees(const float4x3& v) { return float4x3((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI), (v._m22 * 180.0 / PI), (v._m30 * 180.0 / PI), (v._m31 * 180.0 / PI), (v._m32 * 180.0 / PI)); }
-	static float4x4 degrees(const float4x4& v) { return float4x4((v._m00 * 180.0 / PI), (v._m01 * 180.0 / PI), (v._m02 * 180.0 / PI), (v._m03 * 180.0 / PI), (v._m10 * 180.0 / PI), (v._m11 * 180.0 / PI), (v._m12 * 180.0 / PI), (v._m13 * 180.0 / PI), (v._m20 * 180.0 / PI), (v._m21 * 180.0 / PI), (v._m22 * 180.0 / PI), (v._m23 * 180.0 / PI), (v._m30 * 180.0 / PI), (v._m31 * 180.0 / PI), (v._m32 * 180.0 / PI), (v._m33 * 180.0 / PI)); }
+	static float1x1 degrees(const float1x1& v) { return float1x1((v._m00 * 180.0f / PI)); }
+	static float1x2 degrees(const float1x2& v) { return float1x2((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI)); }
+	static float1x3 degrees(const float1x3& v) { return float1x3((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI)); }
+	static float1x4 degrees(const float1x4& v) { return float1x4((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m03 * 180.0f / PI)); }
+	static float2x1 degrees(const float2x1& v) { return float2x1((v._m00 * 180.0f / PI), (v._m10 * 180.0f / PI)); }
+	static float2x2 degrees(const float2x2& v) { return float2x2((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI)); }
+	static float2x3 degrees(const float2x3& v) { return float2x3((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI)); }
+	static float2x4 degrees(const float2x4& v) { return float2x4((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m03 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI), (v._m13 * 180.0f / PI)); }
+	static float3x1 degrees(const float3x1& v) { return float3x1((v._m00 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m20 * 180.0f / PI)); }
+	static float3x2 degrees(const float3x2& v) { return float3x2((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI)); }
+	static float3x3 degrees(const float3x3& v) { return float3x3((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI), (v._m22 * 180.0f / PI)); }
+	static float3x4 degrees(const float3x4& v) { return float3x4((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m03 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI), (v._m13 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI), (v._m22 * 180.0f / PI), (v._m23 * 180.0f / PI)); }
+	static float4x1 degrees(const float4x1& v) { return float4x1((v._m00 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m30 * 180.0f / PI)); }
+	static float4x2 degrees(const float4x2& v) { return float4x2((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI), (v._m30 * 180.0f / PI), (v._m31 * 180.0f / PI)); }
+	static float4x3 degrees(const float4x3& v) { return float4x3((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI), (v._m22 * 180.0f / PI), (v._m30 * 180.0f / PI), (v._m31 * 180.0f / PI), (v._m32 * 180.0f / PI)); }
+	static float4x4 degrees(const float4x4& v) { return float4x4((v._m00 * 180.0f / PI), (v._m01 * 180.0f / PI), (v._m02 * 180.0f / PI), (v._m03 * 180.0f / PI), (v._m10 * 180.0f / PI), (v._m11 * 180.0f / PI), (v._m12 * 180.0f / PI), (v._m13 * 180.0f / PI), (v._m20 * 180.0f / PI), (v._m21 * 180.0f / PI), (v._m22 * 180.0f / PI), (v._m23 * 180.0f / PI), (v._m30 * 180.0f / PI), (v._m31 * 180.0f / PI), (v._m32 * 180.0f / PI), (v._m33 * 180.0f / PI)); }
 
 #pragma endregion
 
@@ -4255,7 +4256,7 @@ namespace dx4xb {
 			}
 			else
 			{
-				this->length = strlen(text);
+				this->length = (int)strlen(text);
 				this->text = new char[this->length + 1];
 				ZeroMemory(this->text, this->length + 1);
 
@@ -4617,7 +4618,6 @@ namespace dx4xb {
 
 #pragma endregion
 
-
 #pragma region Scheduling objects
 
 	/// <summary>
@@ -4686,8 +4686,9 @@ namespace dx4xb {
 
 #pragma endregion
 
+#pragma region Device Manager
 
-	typedef struct DeviceInitializationDescription {
+	typedef struct PresenterDescription {
 		HWND hWnd = 0; // Window handle the device is associated with.
 		bool UseWarpDevice = false; // Uses a warp device to simulate all DX12 functionalities
 		int Frames = 2; // Number of frames on-the-fly. This value is used to allocate resources, defines the number of Backbuffers in swap chain
@@ -4696,17 +4697,54 @@ namespace dx4xb {
 		int ResolutionHeight = 0; // Height of the Backbuffers
 		int Threads = 8; // Number of parallel population process in the scheduler...
 		/// ... TO BE CONTINUED
-	} DeviceInitializationDescription;
+	} PresenterDescription;
 
 	class DeviceManager {
-		wDevice* device;
+		friend Presenter;
+
+		wDevice* device = nullptr;
+	protected:
+
+		DeviceManager() {}
 
 	public:
 		
-		void Initialize(const DeviceInitializationDescription& desc);
+		template<typename T, typename ...A>
+		inline void Load(gObj<T>& technique, A... args) {
+			technique = new T(args...);
+			technique->device = device;
+			technique->OnLoad();
+		}
 
+		template<typename T>
+		inline void Dispatch(gObj<T> technique) {
+			technique->OnDispatch();
+		}
 	};
 
+	class Technique : protected DeviceManager {
+		friend DeviceManager;
+	protected:
+		virtual void OnLoad() = 0;
+
+		virtual void OnDispatch() = 0;
+	};
+
+	class Presenter : public DeviceManager
+	{
+		Presenter() {}
+	public:
+		static gObj<Presenter> Create(const PresenterDescription& desc);
+
+		void BeginFrame();
+
+		void EndFrame();
+
+		~Presenter();
+	};
+
+
+#pragma endregion
 
 }
 

@@ -485,12 +485,20 @@ namespace dx4xb {
 
 #pragma endregion
 
+#pragma region Resources
+
+
+
+#pragma endregion
+
+#pragma region Device and SwapChain Wrappers
+
 	struct wDevice {
 
 		DX_Device device;
 		DX_SwapChain swapChain;
 		ID3D12Debug* debugController;
-		DeviceInitializationDescription desc;
+		PresenterDescription desc;
 		wScheduler* scheduler;
 
 #pragma region Descriptor Heaps
@@ -578,8 +586,10 @@ namespace dx4xb {
 
 #pragma endregion
 
-		void Initialize(const DeviceInitializationDescription& desc);
+		void Initialize(const PresenterDescription& desc);
 	};
+
+#pragma endregion
 
 }
 

@@ -403,6 +403,100 @@ namespace dx4xb {
 			WaitFor(perFrameFinishedSignal[CurrentFrameIndex]);
 	}
 
+	DWORD __stdcall dx4xb::wScheduler::__WORKER_TODO(LPVOID param)
+	{
+		GPUWorkerInfo* wi = (GPUWorkerInfo*)param;
+		int index = wi->Index;
+		wScheduler* scheduler = wi->Scheduler;
+
+		while (!scheduler->IsClosed) {
+			TagProcess tagProcess;
+			if (!scheduler->processQueue->TryConsume(tagProcess))
+				break;
+
+			scheduler->PopulateCmdListWithProcess(tagProcess, index);
+		}
+		return 0;
+	}
+
+	void dx4xb::wScheduler::Enqueue(gObj<GPUProcess> process)
+	{
+		this->PopulateCmdListWithProcess(TagProcess{ process, this->Tag }, 0);
+	}
+
+	void dx4xb::wScheduler::EnqueueAsync(gObj<GPUProcess> process)
+	{
+		this->AsyncWorkPending |= process->RequiredEngine() == Engine::Direct;
+		counting->Increment();
+		processQueue->TryProduce(TagProcess{ process, this->Tag });
+	}
+
+	void dx4xb::wScheduler::WaitFor(const Signal& signal)
+	{
+		int fencesForWaiting = 0;
+		HANDLE FencesForWaiting[3];
+		for (int e = 0; e < 3; e++)
+			if (signal.rallyPoints[e] != 0)
+				FencesForWaiting[fencesForWaiting++] = Engines[e].queue->TriggerEvent(signal.rallyPoints[e]);
+		WaitForMultipleObjects(fencesForWaiting, FencesForWaiting, true, INFINITE);
+		if (signal.rallyPoints[0] != 0)
+			this->AsyncWorkPending = false;
+	}
+
+	Signal dx4xb::wScheduler::FlushAndSignal(EngineMask mask)
+	{
+		int engines = (int)mask;
+		long rally[3];
+		// Barrier to wait for all pending workers to populate command lists
+		// After this, next CPU processes can assume previous CPU collecting has finished
+		counting->Wait();
+
+#pragma region Flush Pending Workers
+
+		for (int e = 0; e < 3; e++)
+			if (engines & (1 << e))
+			{
+				int activeCmdLists = 0;
+				for (int t = 0; t < threadsCount; t++) {
+					if (this->Engines[e].threadInfos[t].isActive) // pending work here
+					{
+						this->Engines[e].threadInfos[t].Close();
+						this->ActiveCmdLists[activeCmdLists++] = Engines[e].threadInfos[t].cmdList;
+					}
+					auto manager = Engines[e].threadInfos[t].manager;
+
+					// Copy all collected descriptors from non-visible to visible DHs.
+					if (manager->w_cmdList->srcDescriptors.size() > 0)
+					{
+						w_device->device->CopyDescriptors(
+							manager->w_cmdList->dstDescriptors.size(), &manager->w_cmdList->dstDescriptors.first(), &manager->w_cmdList->dstDescriptorRangeLengths.first(),
+							manager->w_cmdList->srcDescriptors.size(), &manager->w_cmdList->srcDescriptors.first(), nullptr, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV
+						);
+						// Clears the lists for next usage
+						manager->w_cmdList->srcDescriptors.reset();
+						manager->w_cmdList->dstDescriptors.reset();
+						manager->w_cmdList->dstDescriptorRangeLengths.reset();
+					}
+				}
+
+				if (activeCmdLists > 0) // some cmdlist to execute
+				{
+					Engines[e].queue->Commit(ActiveCmdLists, activeCmdLists);
+
+					rally[e] = Engines[e].queue->Signal();
+				}
+				else
+					rally[e] = 0;
+			}
+
+		return Signal(this, rally);
+	}
+
+	void dx4xb::Signal::WaitFor()
+	{
+		((wScheduler*)this->scheduler)->WaitFor(*this);
+	}
+
 #pragma endregion
 
 #pragma region Descriptor Manager
@@ -446,7 +540,7 @@ namespace dx4xb {
 
 #pragma region Device Wrapper
 
-	void wDevice::Initialize(const DeviceInitializationDescription& desc)
+	void wDevice::Initialize(const PresenterDescription& desc)
 	{
 		this->desc = desc;
 
@@ -578,10 +672,34 @@ namespace dx4xb {
 
 #pragma region Device Manager
 
-	void dx4xb::DeviceManager::Initialize(const DeviceInitializationDescription& desc)
+	gObj<Presenter> Presenter::Create(const PresenterDescription& desc)
 	{
-		this->device = new wDevice();
-		this->device->Initialize(desc);
+		Presenter* result = new Presenter();
+		result->device = new wDevice();
+		result->device->Initialize(desc);
+		return result;
+	}
+
+	void Presenter::BeginFrame() {
+		device->scheduler->PrepareRenderTarget(D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
+	void Presenter::EndFrame() {
+		// Wait for all 
+		device->scheduler->FinishFrame();
+
+		auto hr = device->swapChain->Present(0, 0);
+
+		if (hr != S_OK) {
+			HRESULT r = device->device->GetDeviceRemovedReason();
+			throw Exception::FromError(Errors::Any, nullptr, r);
+		}
+
+		device->scheduler->SetupFrame(device->swapChain->GetCurrentBackBufferIndex());
+	}
+
+	Presenter::~Presenter() {
+		delete device;
 	}
 
 #pragma endregion
