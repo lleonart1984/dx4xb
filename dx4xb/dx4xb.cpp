@@ -248,12 +248,11 @@ namespace dx4xb {
 	uint4x4::operator float4x4() const { return float4x4((float)this->_m00, (float)this->_m01, (float)this->_m02, (float)this->_m03, (float)this->_m10, (float)this->_m11, (float)this->_m12, (float)this->_m13, (float)this->_m20, (float)this->_m21, (float)this->_m22, (float)this->_m23, (float)this->_m30, (float)this->_m31, (float)this->_m32, (float)this->_m33); }
 	uint4x4::operator int4x4() const { return int4x4((int)this->_m00, (int)this->_m01, (int)this->_m02, (int)this->_m03, (int)this->_m10, (int)this->_m11, (int)this->_m12, (int)this->_m13, (int)this->_m20, (int)this->_m21, (int)this->_m22, (int)this->_m23, (int)this->_m30, (int)this->_m31, (int)this->_m32, (int)this->_m33); }
 
-
 #pragma endregion
 
-#pragma region Scheduler
+	#pragma region Scheduler
 
-	dx4xb::wScheduler::wScheduler(wDevice* w_device, int frames, int threads)
+	wScheduler::wScheduler(wDevice* w_device, int frames, int threads)
 	{
 		this->w_device = w_device;
 
@@ -320,9 +319,9 @@ namespace dx4xb {
 				info.threadInfos[j].cmdList->Close(); // start cmdList state closed.
 				info.threadInfos[j].isActive = false;
 
-				/*switch ((Engine)i) {
+				switch ((Engine)i) {
 				case Engine::Direct:
-					info.threadInfos[j].manager = new RaytracingManager();
+					info.threadInfos[j].manager = new RaytracingManager(); // can be used as GraphicsManager when needed
 					break;
 				case Engine::Compute:
 					info.threadInfos[j].manager = new ComputeManager();
@@ -332,10 +331,10 @@ namespace dx4xb {
 					break;
 				}
 
-				DX_CmdWrapper* cmdWrapper = new DX_CmdWrapper();
-				cmdWrapper->dxWrapper = this->dxWrapper;
+				wCmdList* cmdWrapper = new wCmdList();
+				cmdWrapper->w_device = this->w_device;
 				cmdWrapper->cmdList = info.threadInfos[j].cmdList;
-				info.threadInfos[j].manager->__InternalDXCmdWrapper = cmdWrapper;*/
+				info.threadInfos[j].manager->w_cmdList = cmdWrapper;
 			}
 		}
 	}
@@ -497,7 +496,7 @@ namespace dx4xb {
 		((wScheduler*)this->scheduler)->WaitFor(*this);
 	}
 
-#pragma endregion
+	#pragma endregion
 
 #pragma region Descriptor Manager
 
@@ -535,6 +534,527 @@ namespace dx4xb {
 
 		persistentAllocator = new Allocator();
 	}
+
+#pragma endregion
+
+#pragma region Resources
+
+	int dx4xb::wResource::SizeOfFormatElement(DXGI_FORMAT format)
+	{
+		switch (format) {
+		case DXGI_FORMAT_R32G32B32A32_TYPELESS:
+		case DXGI_FORMAT_R32G32B32A32_FLOAT:
+		case DXGI_FORMAT_R32G32B32A32_UINT:
+		case DXGI_FORMAT_R32G32B32A32_SINT:
+			return 128 / 8;
+		case DXGI_FORMAT_R32G32B32_TYPELESS:
+		case DXGI_FORMAT_R32G32B32_FLOAT:
+		case DXGI_FORMAT_R32G32B32_UINT:
+		case DXGI_FORMAT_R32G32B32_SINT:
+			return 96 / 8;
+		case DXGI_FORMAT_R16G16B16A16_TYPELESS:
+		case DXGI_FORMAT_R16G16B16A16_FLOAT:
+		case DXGI_FORMAT_R16G16B16A16_UNORM:
+		case DXGI_FORMAT_R16G16B16A16_UINT:
+		case DXGI_FORMAT_R16G16B16A16_SNORM:
+		case DXGI_FORMAT_R16G16B16A16_SINT:
+		case DXGI_FORMAT_R32G32_TYPELESS:
+		case DXGI_FORMAT_R32G32_FLOAT:
+		case DXGI_FORMAT_R32G32_UINT:
+		case DXGI_FORMAT_R32G32_SINT:
+		case DXGI_FORMAT_R32G8X24_TYPELESS:
+		case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+		case DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS:
+		case DXGI_FORMAT_X32_TYPELESS_G8X24_UINT:
+			return 64 / 8;
+		case DXGI_FORMAT_R10G10B10A2_TYPELESS:
+		case DXGI_FORMAT_R10G10B10A2_UNORM:
+		case DXGI_FORMAT_R10G10B10A2_UINT:
+		case DXGI_FORMAT_R11G11B10_FLOAT:
+		case DXGI_FORMAT_R8G8B8A8_TYPELESS:
+		case DXGI_FORMAT_R8G8B8A8_UNORM:
+		case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+		case DXGI_FORMAT_R8G8B8A8_UINT:
+		case DXGI_FORMAT_R8G8B8A8_SNORM:
+		case DXGI_FORMAT_R8G8B8A8_SINT:
+		case DXGI_FORMAT_R16G16_TYPELESS:
+		case DXGI_FORMAT_R16G16_FLOAT:
+		case DXGI_FORMAT_R16G16_UNORM:
+		case DXGI_FORMAT_R16G16_UINT:
+		case DXGI_FORMAT_R16G16_SNORM:
+		case DXGI_FORMAT_R16G16_SINT:
+		case DXGI_FORMAT_R32_TYPELESS:
+		case DXGI_FORMAT_D32_FLOAT:
+		case DXGI_FORMAT_R32_FLOAT:
+		case DXGI_FORMAT_R32_UINT:
+		case DXGI_FORMAT_R32_SINT:
+		case DXGI_FORMAT_R24G8_TYPELESS:
+		case DXGI_FORMAT_D24_UNORM_S8_UINT:
+		case DXGI_FORMAT_R24_UNORM_X8_TYPELESS:
+		case DXGI_FORMAT_X24_TYPELESS_G8_UINT:
+		case DXGI_FORMAT_B8G8R8A8_UNORM:
+		case DXGI_FORMAT_B8G8R8X8_UNORM:
+			return 32 / 8;
+		case DXGI_FORMAT_R8G8_TYPELESS:
+		case DXGI_FORMAT_R8G8_UNORM:
+		case DXGI_FORMAT_R8G8_UINT:
+		case DXGI_FORMAT_R8G8_SNORM:
+		case DXGI_FORMAT_R8G8_SINT:
+		case DXGI_FORMAT_R16_TYPELESS:
+		case DXGI_FORMAT_R16_FLOAT:
+		case DXGI_FORMAT_D16_UNORM:
+		case DXGI_FORMAT_R16_UNORM:
+		case DXGI_FORMAT_R16_UINT:
+		case DXGI_FORMAT_R16_SNORM:
+		case DXGI_FORMAT_R16_SINT:
+		case DXGI_FORMAT_B5G6R5_UNORM:
+		case DXGI_FORMAT_B5G5R5A1_UNORM:
+			return 16 / 8;
+		case DXGI_FORMAT_R8_TYPELESS:
+		case DXGI_FORMAT_R8_UNORM:
+		case DXGI_FORMAT_R8_UINT:
+		case DXGI_FORMAT_R8_SNORM:
+		case DXGI_FORMAT_R8_SINT:
+		case DXGI_FORMAT_A8_UNORM:
+			return 8 / 8;
+		}
+	}
+
+	wResource::wResource(
+		DX_Device device,
+		DX_Resource resource,
+		const D3D12_RESOURCE_DESC& desc,
+		int elementStride,
+		D3D12_RESOURCE_STATES initialState,
+		CPUAccessibility cpuAccessibility)
+		: device(device), resource(resource), desc(desc), elementStride(elementStride)
+	{
+		if (resource == nullptr) // null resource for nullview
+			return;
+
+		cpuaccess = cpuAccessibility;
+
+		LastUsageState = initialState; // state at creation
+
+		subresources = desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? desc.MipLevels : desc.MipLevels * desc.DepthOrArraySize;
+
+		pLayouts = new D3D12_PLACED_SUBRESOURCE_FOOTPRINT[subresources];
+		pNumRows = new unsigned int[subresources];
+		pRowSizesInBytes = new UINT64[subresources];
+		device->GetCopyableFootprints(&desc, 0, subresources, 0, pLayouts, pNumRows, pRowSizesInBytes, &pTotalSizes);
+	}
+
+	inline D3D12_GPU_VIRTUAL_ADDRESS wResource::GetGPUVirtualAddress() {
+		return resource->GetGPUVirtualAddress();
+	}
+
+	//---Copied from d3d12x.h----------------------------------------------------------------------------
+		// Row-by-row memcpy
+	inline void MemcpySubresource(
+		_In_ const D3D12_MEMCPY_DEST* pDest,
+		_In_ const D3D12_SUBRESOURCE_DATA* pSrc,
+		SIZE_T RowSizeInBytes,
+		UINT NumRows,
+		UINT NumSlices,
+		bool flipRows = false
+	)
+	{
+		for (UINT z = 0; z < NumSlices; ++z)
+		{
+			BYTE* pDestSlice = reinterpret_cast<BYTE*>(pDest->pData) + pDest->SlicePitch * z;
+			const BYTE* pSrcSlice = reinterpret_cast<const BYTE*>(pSrc->pData) + pSrc->SlicePitch * z;
+			for (UINT y = 0; y < NumRows; ++y)
+			{
+				memcpy(pDestSlice + pDest->RowPitch * y,
+					pSrcSlice + pSrc->RowPitch * (flipRows ? NumRows - y - 1 : y),
+					RowSizeInBytes);
+			}
+		}
+	}
+
+	void wResource::__ResolveUploading() {
+		if (!uploading) {
+			mutex.Acquire();
+
+			if (!uploading) {
+
+				if (cpuaccess == CPUAccessibility::Write)
+					uploading = resource; // use the resource for uploading directly
+				else {
+					D3D12_RESOURCE_DESC finalDesc = { };
+					finalDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+					finalDesc.Format = DXGI_FORMAT_UNKNOWN;
+					finalDesc.Width = pTotalSizes;
+					finalDesc.Height = 1;
+					finalDesc.DepthOrArraySize = 1;
+					finalDesc.MipLevels = 1;
+					finalDesc.SampleDesc.Count = 1;
+					finalDesc.SampleDesc.Quality = 0;
+					finalDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+					finalDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+					D3D12_HEAP_PROPERTIES uploadProp;
+					uploadProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+					uploadProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+					uploadProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+					uploadProp.VisibleNodeMask = 1;
+					uploadProp.CreationNodeMask = 1;
+
+					device->CreateCommittedResource(&uploadProp, D3D12_HEAP_FLAG_NONE, &finalDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+						IID_PPV_ARGS(&uploading));
+				}
+
+				// Automatically map the data to CPU to fill in next instructions
+				// Uploading version is only required if some CPU data is gonna be copied to the GPU resource.
+				D3D12_RANGE range{ };
+				uploading->Map(0, &range, (void**)&permanentUploadingMap);
+			}
+
+			mutex.Release();
+		}
+	}
+
+	void wResource::__ResolveDownloading() {
+		if (!this->downloading) {
+			mutex.Acquire();
+			if (!downloading) {
+
+				if (cpuaccess == CPUAccessibility::Read)
+					downloading = resource; // Use directly the resource for downloading
+				else {
+
+					D3D12_RESOURCE_DESC finalDesc = { };
+					finalDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+					finalDesc.Format = DXGI_FORMAT_UNKNOWN;
+					finalDesc.Width = pTotalSizes;
+					finalDesc.Height = 1;
+					finalDesc.DepthOrArraySize = 1;
+					finalDesc.MipLevels = 1;
+					finalDesc.SampleDesc.Count = 1;
+					finalDesc.SampleDesc.Quality = 0;
+					finalDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+					finalDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+					D3D12_HEAP_PROPERTIES downloadProp;
+					downloadProp.Type = D3D12_HEAP_TYPE_READBACK;
+					downloadProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+					downloadProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+					downloadProp.VisibleNodeMask = 1;
+					downloadProp.CreationNodeMask = 1;
+					device->CreateCommittedResource(&downloadProp, D3D12_HEAP_FLAG_NONE, &finalDesc, D3D12_RESOURCE_STATE_COPY_DEST, nullptr,
+						IID_PPV_ARGS(&downloading));
+				}
+
+			}
+
+			mutex.Release();
+		}
+	}
+
+	void wResource::AddBarrier(DX_CommandList cmdList, D3D12_RESOURCE_STATES dst) {
+		// If the resource is used as UAV
+		// Put a barrier to finish any pending read/write op
+		if (this->LastUsageState & D3D12_RESOURCE_STATE_UNORDERED_ACCESS)
+		{
+			D3D12_RESOURCE_BARRIER barrier = { };
+			barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+			barrier.UAV.pResource = this->resource;
+			cmdList->ResourceBarrier(1, &barrier);
+		}
+
+		if (this->LastUsageState == dst)
+			return;
+
+		D3D12_RESOURCE_BARRIER barrier = { };
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.Transition.pResource = this->resource;
+		barrier.Transition.StateAfter = dst;
+		barrier.Transition.StateBefore = this->LastUsageState;
+		barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+		cmdList->ResourceBarrier(1, &barrier);
+		this->LastUsageState = dst;
+	}
+
+	void wResource::AddUAVBarrier(DX_CommandList cmdList) {
+		// If the resource is used as UAV
+		// Put a barrier to finish any pending read/write op
+		D3D12_RESOURCE_BARRIER barrier = { };
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		barrier.UAV.pResource = this->resource;
+		cmdList->ResourceBarrier(1, &barrier);
+	}
+
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::GetCPUHandleFor(D3D12_DESCRIPTOR_RANGE_TYPE type) {
+		switch (type) {
+		case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
+			return getSRVHandle();
+		case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
+			return getUAVHandle();
+		case D3D12_DESCRIPTOR_RANGE_TYPE_CBV:
+			return getCBVHandle();
+		}
+		return D3D12_CPU_DESCRIPTOR_HANDLE();
+	}
+
+	void wResourceView::CreateRTVDesc(D3D12_RENDER_TARGET_VIEW_DESC& d)
+	{
+		d.Texture2DArray.ArraySize = arrayCount;
+		d.Texture2DArray.FirstArraySlice = arrayStart;
+		d.Texture2DArray.MipSlice = mipStart;
+		d.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DARRAY;
+		d.Format = !w_resource ? DXGI_FORMAT_UNKNOWN : w_resource->desc.Format;
+	}
+
+	void wResourceView::CreateSRVDesc(D3D12_SHADER_RESOURCE_VIEW_DESC& d)
+	{
+		switch (this->ViewDimension) {
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			d.Buffer.FirstElement = arrayStart;
+			d.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_NONE;
+			d.Buffer.NumElements = arrayCount;
+			d.Buffer.StructureByteStride = elementStride;
+			d.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_UNKNOWN : w_resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+			d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			d.Texture1DArray.ArraySize = arrayCount;
+			d.Texture1DArray.FirstArraySlice = arrayStart;
+			d.Texture1DArray.MipLevels = mipCount;
+			d.Texture1DArray.MostDetailedMip = mipStart;
+			d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1DARRAY;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+			d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			d.Texture2DArray.ArraySize = arrayCount;
+			d.Texture2DArray.FirstArraySlice = arrayStart;
+			d.Texture2DArray.MipLevels = mipCount;
+			d.Texture2DArray.MostDetailedMip = mipStart;
+			d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+			d.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			d.Texture3D.MipLevels = mipCount;
+			d.Texture3D.MostDetailedMip = mipStart;
+			d.Texture3D.ResourceMinLODClamp = 0;
+			d.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		}
+	}
+
+	void wResourceView::CreateUAVDesc(D3D12_UNORDERED_ACCESS_VIEW_DESC& d)
+	{
+		switch (this->ViewDimension) {
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			d.Buffer.CounterOffsetInBytes = 0;
+			d.Buffer.FirstElement = arrayStart;
+			d.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_NONE;
+			d.Buffer.NumElements = arrayCount;
+			d.Buffer.StructureByteStride = elementStride;
+			d.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+			d.Format = DXGI_FORMAT_UNKNOWN;// !resource ? DXGI_FORMAT_UNKNOWN : resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+			d.Texture1DArray.ArraySize = arrayCount;
+			d.Texture1DArray.FirstArraySlice = arrayStart;
+			d.Texture1DArray.MipSlice = mipStart;
+			d.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE1DARRAY;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+			d.Texture2DArray.ArraySize = arrayCount;
+			d.Texture2DArray.FirstArraySlice = arrayStart;
+			d.Texture2DArray.MipSlice = mipStart;
+			d.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+			d.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
+			d.Texture3D.WSize = arrayCount;
+			d.Texture3D.FirstWSlice = arrayStart;
+			d.Texture3D.MipSlice = mipStart;
+			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
+			break;
+		}
+	}
+
+	void wResourceView::CreateVBV(D3D12_VERTEX_BUFFER_VIEW& desc) {
+		desc = { };
+		desc.BufferLocation = !w_resource->resource ? 0 : w_resource->resource->GetGPUVirtualAddress();
+		desc.StrideInBytes = elementStride;
+		desc.SizeInBytes = (arrayStart + arrayCount) * elementStride;
+	}
+
+	void wResourceView::CreateIBV(D3D12_INDEX_BUFFER_VIEW& desc) {
+		desc = { };
+		desc.BufferLocation = !w_resource->resource ? 0 : w_resource->resource->GetGPUVirtualAddress();
+		desc.Format = !w_resource ? DXGI_FORMAT_UNKNOWN : elementStride == 2 ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+		desc.SizeInBytes = (arrayStart + arrayCount) * elementStride;
+	}
+
+	void wResourceView::CreateDSVDesc(D3D12_DEPTH_STENCIL_VIEW_DESC& d)
+	{
+		d.Texture2DArray.ArraySize = arrayCount;
+		d.Texture2DArray.FirstArraySlice = arrayStart;
+		d.Texture2DArray.MipSlice = mipStart;
+		d.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DARRAY;
+		d.Format = !w_resource->resource ? DXGI_FORMAT_UNKNOWN : w_resource->desc.Format;
+	}
+
+	void wResourceView::CreateCBVDesc(D3D12_CONSTANT_BUFFER_VIEW_DESC& d) {
+		d.BufferLocation = !w_resource ? 0 : w_resource->resource->GetGPUVirtualAddress();
+		d.SizeInBytes = (this->elementStride * this->arrayCount + 255) & ~255;
+	}
+
+	int wResourceView::getSRV() {
+		if ((handle_mask & 1) != 0)
+			return srv_cached_handle;
+
+		mutex.Acquire();
+		if ((handle_mask & 1) == 0)
+		{
+			D3D12_SHADER_RESOURCE_VIEW_DESC d;
+			ZeroMemory(&d, sizeof(D3D12_SHADER_RESOURCE_VIEW_DESC));
+			CreateSRVDesc(d);
+			srv_cached_handle = w_device->cpu_csu->AllocateNewHandle();
+			w_resource->device->CreateShaderResourceView(!w_resource ? nullptr : w_resource->resource, &d, w_device->cpu_csu->getCPUVersion(srv_cached_handle));
+			handle_mask |= 1;
+		}
+		mutex.Release();
+		return srv_cached_handle;
+	}
+
+	int wResourceView::getUAV() {
+		if ((handle_mask & 2) != 0)
+			return uav_cached_handle;
+
+		mutex.Acquire();
+		if ((handle_mask & 2) == 0)
+		{
+			D3D12_UNORDERED_ACCESS_VIEW_DESC d;
+			ZeroMemory(&d, sizeof(D3D12_UNORDERED_ACCESS_VIEW_DESC));
+			CreateUAVDesc(d);
+			uav_cached_handle = w_device->cpu_csu->AllocateNewHandle();
+			w_resource->device->CreateUnorderedAccessView(!w_resource ? nullptr : w_resource->resource, nullptr, &d, w_device->cpu_csu->getCPUVersion(uav_cached_handle));
+			handle_mask |= 2;
+		}
+		mutex.Release();
+		return uav_cached_handle;
+	}
+
+
+	int wResourceView::getCBV() {
+		if ((handle_mask & 4) != 0)
+			return cbv_cached_handle;
+
+		mutex.Acquire();
+		if ((handle_mask & 4) == 0)
+		{
+			D3D12_CONSTANT_BUFFER_VIEW_DESC d;
+			ZeroMemory(&d, sizeof(D3D12_CONSTANT_BUFFER_VIEW_DESC));
+			CreateCBVDesc(d);
+			cbv_cached_handle = w_device->cpu_csu->AllocateNewHandle();
+			w_resource->device->CreateConstantBufferView(&d, w_device->cpu_csu->getCPUVersion(cbv_cached_handle));
+			handle_mask |= 4;
+		}
+		mutex.Release();
+		return cbv_cached_handle;
+	}
+
+	int wResourceView::getRTV() {
+		if ((handle_mask & 8) != 0)
+			return rtv_cached_handle;
+
+		mutex.Acquire();
+
+		if ((handle_mask & 8) == 0) {
+			D3D12_RENDER_TARGET_VIEW_DESC d;
+			ZeroMemory(&d, sizeof(D3D12_RENDER_TARGET_VIEW_DESC));
+			CreateRTVDesc(d);
+			rtv_cached_handle = w_device->cpu_rt->AllocateNewHandle();
+			w_resource->device->CreateRenderTargetView(!w_resource ? nullptr : w_resource->resource, &d, w_device->cpu_rt->getCPUVersion(rtv_cached_handle));
+			handle_mask |= 8;
+		}
+
+		mutex.Release();
+		return rtv_cached_handle;
+	}
+
+	int wResourceView::getDSV() {
+
+		if ((handle_mask & 16) != 0)
+			return dsv_cached_handle;
+
+		mutex.Acquire();
+
+		if ((handle_mask & 16) == 0) {
+			D3D12_DEPTH_STENCIL_VIEW_DESC d;
+			ZeroMemory(&d, sizeof(D3D12_DEPTH_STENCIL_VIEW_DESC));
+			CreateDSVDesc(d);
+			dsv_cached_handle = w_device->cpu_ds->AllocateNewHandle();
+			w_resource->device->CreateDepthStencilView(!w_resource ? nullptr : w_resource->resource, &d, w_device->cpu_ds->getCPUVersion(dsv_cached_handle));
+			handle_mask |= 16;
+		}
+
+		mutex.Release();
+		return dsv_cached_handle;
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::getDSVHandle() {
+		return w_device->cpu_ds->getCPUVersion(getDSV());
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::getRTVHandle() {
+		return w_device->cpu_rt->getCPUVersion(getRTV());
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::getSRVHandle() {
+		return w_device->cpu_csu->getCPUVersion(getSRV());
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::getCBVHandle() {
+		return w_device->cpu_csu->getCPUVersion(getCBV());
+	}
+
+	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::getUAVHandle() {
+		return w_device->cpu_csu->getCPUVersion(getUAV());
+	}
+
+	wResourceView* wResourceView::createSlicedClone(
+		int mipOffset, int mipNewCount,
+		int arrayOffset, int arrayNewCount) {
+		wResourceView* result = new wResourceView(this->w_device, this->w_resource);
+
+		result->elementStride = this->elementStride;
+		result->ViewDimension = this->ViewDimension;
+
+		if (mipNewCount > 0) {
+			result->mipStart = this->mipStart + mipOffset;
+			result->mipCount = mipNewCount;
+		}
+		else {
+			result->mipStart = this->mipStart;
+			result->mipCount = this->mipCount;
+		}
+
+		if (arrayNewCount > 0) {
+			result->arrayStart = this->arrayStart + arrayOffset;
+			result->arrayCount = arrayNewCount;
+		}
+		else {
+			result->arrayStart = this->arrayStart;
+			result->arrayCount = this->arrayCount;
+		}
+
+		return result;
+	}
+
 
 #pragma endregion
 

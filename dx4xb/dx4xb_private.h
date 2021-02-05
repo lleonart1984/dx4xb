@@ -173,8 +173,8 @@ namespace dx4xb {
 	struct wCmdList {
 		wDevice* w_device;
 		DX_CommandList cmdList = nullptr;
-		wPipeline* currentPipeline = nullptr;
-		wProgram* activeProgram = nullptr;
+		gObj<Pipeline> currentPipeline = nullptr;
+		gObj<wProgram> activeProgram = nullptr;
 		list<D3D12_CPU_DESCRIPTOR_HANDLE> srcDescriptors = {};
 		list<D3D12_CPU_DESCRIPTOR_HANDLE> dstDescriptors = {};
 		list<unsigned int> dstDescriptorRangeLengths = {};
@@ -487,7 +487,188 @@ namespace dx4xb {
 
 #pragma region Resources
 
+	/// <summary>
+	/// Internal wrapper of a DX 12 Resource.
+	/// </summary>
+	struct wResource {
+		static int SizeOfFormatElement(DXGI_FORMAT format);
 
+		wResource(
+			DX_Device device,
+			DX_Resource resource,
+			const D3D12_RESOURCE_DESC& desc,
+			int elementStride,
+			D3D12_RESOURCE_STATES initialState,
+			CPUAccessibility cpuAccessibility);
+
+		~wResource() {
+			if (resource == nullptr)
+				return;
+
+			delete[] pLayouts;
+			delete[] pNumRows;
+			delete[] pRowSizesInBytes;
+		}
+
+		DX_Device device;
+
+		// Resource being wrapped
+		DX_Resource resource;
+		// Resourve version for uploading purposes (in case the CPU can not write directly).
+		DX_Resource uploading;
+		// Resource version for downloading purposes (in case the CPU can not read directly).
+		DX_Resource downloading;
+
+		// Resource description at creation
+		D3D12_RESOURCE_DESC desc;
+		// For buffer resources, get the original element stride width of the resource.
+		int elementStride = 0;
+		// Last used state of this resource on the GPU
+		D3D12_RESOURCE_STATES LastUsageState;
+
+		// For uploading/downloading data, a permanent CPU mapped version is cache to avoid several map overheads...
+		byte* permanentUploadingMap = nullptr;
+		byte* permanentDownloadingMap = nullptr;
+
+		int subresources;
+
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT* pLayouts;
+		unsigned int* pNumRows;
+		UINT64* pRowSizesInBytes;
+		UINT64 pTotalSizes;
+		CPUAccessibility cpuaccess;
+
+		// Used to synchronize access to the resource will mapping
+		Mutex mutex;
+
+		// How many resource views are referencing this resource. This resource is automatically released by the last view using it
+		// when no view is referencing it.
+		int references = 0;
+
+		D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress();
+
+		// Resolves an uploading CPU-Writable version for this resource
+		void __ResolveUploading();
+
+		// Resolves a downloading CPU-Readable version for this resource
+		void __ResolveDownloading();
+
+		// Writes data in specific subresources at mapped uploading memory
+		void WriteToMapped(byte* data, wResourceView* view, bool flipRows = false);
+
+		// copies de specific range of subresources from uploading to the gpu resource
+		void UpdateResourceFromMapped(DX_CommandList cmdList, wResourceView* view);
+
+		// Reads data from specific subresources at mapped downloading memory
+		void ReadFromMapped(byte* data, wResourceView* view, bool flipRows = false);
+
+		// copies de specific range of subresources from gpu resource to the downloading version
+		void UpdateMappedFromResource(DX_CommandList cmdList, wResourceView* view);
+
+		// Writes data in the first resource at specific region of the mapped data...
+		void WriteRegionToMappedSubresource(byte* data, wResourceView* view, const D3D12_BOX& region, bool flipRows = false);
+
+		// copies de specific region of the single-subresource from uploading to the gpu resource
+		void UpdateRegionFromUploading(DX_CommandList cmdList, wResourceView* view, const D3D12_BOX& region);
+
+		// Reads data from the first resource from specific region...
+		void ReadRegionFromMappedSubresource(byte* data, wResourceView* view, const D3D12_BOX& region, bool flipRows = false);
+
+		void UpdateRegionToDownloading(DX_CommandList cmdList, wResourceView* view, const D3D12_BOX& region);
+
+		// Creates a barrier in a cmd list to trasition usage states for this resource.
+		void AddBarrier(DX_CommandList cmdList, D3D12_RESOURCE_STATES dst);
+
+		// Creates a barrier in a cmd list to trasition usage states for this resource.
+		void AddUAVBarrier(DX_CommandList cmdList);
+	};
+
+	/// <summary>
+	/// Internal wrapper of a DX 12 Resource View
+	/// </summary>
+	struct wResourceView {
+		wResource* w_resource;
+		wDevice* w_device;
+
+		wResourceView(wDevice* w_device, wResource* w_resource) :w_device(w_device), w_resource(w_resource) {}
+
+		// Mip start of this view slice
+		int mipStart = 0;
+		// Mip count of this view slice
+		int mipCount = 1;
+		// Array start of this view slice.
+		// If current view is a Buffer, then this variable represents the first element
+		int arrayStart = 0;
+		// Array count of this view slice
+		// If current view is a Buffer, then this variable represents the number of elements.
+		int arrayCount = 1;
+
+		// Represents the element stride in bytes of the underlaying resource in case of a Buffer.
+		int elementStride = 0;
+
+		// Cached cpu handle created for Shader resource view
+		int srv_cached_handle = 0;
+		// Cached cpu handle created for Unordered Access view
+		int uav_cached_handle = 0;
+		// Cached cpu hanlde created for Constant Buffer view
+		int cbv_cached_handle = 0;
+		// Cached cpu handle created for a Render Target View
+		int rtv_cached_handle = 0;
+		// Cached cpu handle created for DepthStencil buffer view
+		int dsv_cached_handle = 0;
+		// Mask of valid cached handles 1-srv, 2-uav, 4-cbv, 8-rtv, 16-dsv
+		unsigned int handle_mask = 0;
+
+		// Mutex object used to synchronize handle creation.
+		Mutex mutex;
+
+		D3D12_CPU_DESCRIPTOR_HANDLE GetCPUHandleFor(D3D12_DESCRIPTOR_RANGE_TYPE type);
+
+#pragma region Creating view handles and caching
+
+		void CreateRTVDesc(D3D12_RENDER_TARGET_VIEW_DESC& d);
+
+		void CreateSRVDesc(D3D12_SHADER_RESOURCE_VIEW_DESC& d);
+
+		void CreateUAVDesc(D3D12_UNORDERED_ACCESS_VIEW_DESC& d);
+
+		void CreateVBV(D3D12_VERTEX_BUFFER_VIEW& desc);
+
+		void CreateIBV(D3D12_INDEX_BUFFER_VIEW& desc);
+
+		void CreateDSVDesc(D3D12_DEPTH_STENCIL_VIEW_DESC& d);
+
+		void CreateCBVDesc(D3D12_CONSTANT_BUFFER_VIEW_DESC& d);
+
+		int getSRV();
+
+		int getUAV();
+
+		int getCBV();
+
+		int getRTV();
+
+		int getDSV();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE getDSVHandle();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE getRTVHandle();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE getSRVHandle();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE getCBVHandle();
+
+		D3D12_CPU_DESCRIPTOR_HANDLE getUAVHandle();
+
+#pragma endregion
+
+		// Gets the current view dimension of the resource.
+		D3D12_RESOURCE_DIMENSION ViewDimension = D3D12_RESOURCE_DIMENSION_UNKNOWN;
+
+		wResourceView* createSlicedClone(
+			int mipOffset, int mipNewCount,
+			int arrayOffset, int arrayNewCount);
+	};
 
 #pragma endregion
 
