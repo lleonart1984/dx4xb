@@ -348,6 +348,142 @@ namespace dx4xb {
 
 #pragma endregion
 
+#pragma region Descriptor Manager
+
+	struct Allocator {
+		struct Node {
+			int index;
+			Node* next;
+		};
+
+		int allocated = 0;
+		Node* free = nullptr;
+
+		Mutex mutex;
+
+		~Allocator() {
+			while (free != nullptr) {
+				Node* toDelete = free;
+				free = free->next;
+				delete toDelete;
+			}
+		}
+
+		int Allocate() {
+			int index;
+			mutex.Acquire();
+
+			if (free != nullptr) {
+				Node* toDelete = free;
+				free = free->next;
+				index = toDelete->index;
+				delete toDelete;
+			}
+			else
+				index = allocated++;
+
+			mutex.Release();
+
+			return index;
+		}
+
+		void Free(int index) {
+			mutex.Acquire();
+
+			free = new Node{
+				index,
+				free
+			};
+
+			mutex.Release();
+		}
+	};
+
+	class CPUDescriptorHeapManager {
+		DX_DescriptorHeap heap;
+		unsigned int size;
+		Allocator* allocator;
+		SIZE_T startCPU;
+	public:
+		CPUDescriptorHeapManager(DX_Device device, D3D12_DESCRIPTOR_HEAP_TYPE type, int capacity);
+		~CPUDescriptorHeapManager() {
+			delete allocator;
+		}
+		// Allocates a new index for a resource descriptor
+		inline int AllocateNewHandle() {
+			return allocator->Allocate();
+		}
+		// Releases a specific index of a resource is being released.
+		inline void Free(int index) {
+			allocator->Free(index);
+		}
+		inline D3D12_CPU_DESCRIPTOR_HANDLE getCPUVersion(int index) { return D3D12_CPU_DESCRIPTOR_HANDLE{ startCPU + index * size }; }
+		inline DX_DescriptorHeap getInnerHeap() { return heap; }
+	};
+
+	class GPUDescriptorHeapManager {
+		DX_DescriptorHeap heap;
+		unsigned int size;
+		SIZE_T startCPU;
+		UINT64 startGPU;
+
+		// Current Avail
+		volatile long mallocOffset = 0;
+
+		// Total Capacity of the heap.
+		int capacity;
+		// Capacity of the heap for each frame.
+		int frameCapacity;
+
+		// Marks the capacity of the heap for a specific frame.
+		int lastAvailableInBlock;
+
+		// Allocator used for handles persistent during all execution.
+		Allocator* persistentAllocator;
+
+	public:
+
+		// Resets the per-frame allocator to the initial values of a specific frame
+		inline void RestartAllocatorForFrame(int frameIndex) {
+			mallocOffset = frameIndex * frameCapacity;
+			lastAvailableInBlock = (frameIndex + 1) * frameCapacity;
+		}
+
+		// Allocate some descriptors in current frame.
+		inline long AllocateInFrame(int descriptors) {
+			auto result = InterlockedExchangeAdd(&mallocOffset, descriptors);
+			if (mallocOffset >= lastAvailableInBlock)
+				throw Exception::FromError(Errors::RunOutOfMemory, "Descriptor heap");
+			return result;
+		}
+
+		inline int AllocatePersistent() {
+			return capacity - 1 - persistentAllocator->Allocate();
+		}
+
+		inline void FreePersistent(int index) {
+			persistentAllocator->Free(capacity - 1 - index);
+		}
+
+		GPUDescriptorHeapManager(
+			DX_Device device,
+			D3D12_DESCRIPTOR_HEAP_TYPE type,
+			int capacity,
+			int persistentCapacity,
+			int buffers);
+
+		~GPUDescriptorHeapManager() {
+			delete persistentAllocator;
+		}
+		// Gets the cpu descriptor handle to access to a specific index slot of this descriptor heap
+		inline D3D12_GPU_DESCRIPTOR_HANDLE getGPUVersion(int index) { return D3D12_GPU_DESCRIPTOR_HANDLE{ startGPU + index * size }; }
+		// Gets the gpu descriptor handle to access to a specific index slot of this descriptor heap
+		inline D3D12_CPU_DESCRIPTOR_HANDLE getCPUVersion(int index) { return D3D12_CPU_DESCRIPTOR_HANDLE{ startCPU + index * size }; }
+
+		inline DX_DescriptorHeap getInnerHeap() { return heap; }
+	};
+
+#pragma endregion
 
 	struct wDevice {
 
@@ -356,6 +492,33 @@ namespace dx4xb {
 		ID3D12Debug* debugController;
 		DeviceInitializationDescription desc;
 		wScheduler* scheduler;
+
+#pragma region Descriptor Heaps
+
+		// -- Shader visible heaps --
+
+		// Descriptor heap for gui windows and fonts
+		gObj<GPUDescriptorHeapManager> gui_csu;
+
+		// -- GPU heaps --
+
+		// Descriptor heap for CBV, SRV and UAV
+		gObj<GPUDescriptorHeapManager> gpu_csu;
+		// Descriptor heap for sampler objects
+		gObj<GPUDescriptorHeapManager> gpu_smp;
+
+		// -- CPU heaps --
+
+		// Descriptor heap for render targets views
+		gObj<CPUDescriptorHeapManager> cpu_rt;
+		// Descriptor heap for depth stencil views
+		gObj<CPUDescriptorHeapManager> cpu_ds;
+		// Descriptor heap for cbs, srvs and uavs in CPU memory
+		gObj<CPUDescriptorHeapManager> cpu_csu;
+		// Descriptor heap for sampler objects in CPU memory
+		gObj<CPUDescriptorHeapManager> cpu_smp;
+
+#pragma endregion
 
 #pragma region Tool methods
 

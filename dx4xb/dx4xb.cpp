@@ -368,8 +368,8 @@ namespace dx4xb {
 		for (int e = 0; e < 3; e++)
 			Engines[e].frames[frame].ResetUsedAllocators();
 
-		//w_device->gpu_csu->RestartAllocatorForFrame(frame);
-		//w_device->gpu_smp->RestartAllocatorForFrame(frame);
+		w_device->gpu_csu->RestartAllocatorForFrame(frame);
+		w_device->gpu_smp->RestartAllocatorForFrame(frame);
 
 		PrepareRenderTarget(D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
@@ -401,6 +401,45 @@ namespace dx4xb {
 		if (!w_device->desc.UseBuffering)
 			// Grants the GPU finished working this frame before finishing this frame
 			WaitFor(perFrameFinishedSignal[CurrentFrameIndex]);
+	}
+
+#pragma endregion
+
+#pragma region Descriptor Manager
+
+	CPUDescriptorHeapManager::CPUDescriptorHeapManager(DX_Device device, D3D12_DESCRIPTOR_HEAP_TYPE type, int capacity)
+	{
+		size = device->GetDescriptorHandleIncrementSize(type);
+		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+		desc.NodeMask = 0;
+		desc.NumDescriptors = capacity;
+		desc.Type = type;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+		device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+		startCPU = heap->GetCPUDescriptorHandleForHeapStart().ptr;
+
+		allocator = new Allocator();
+	}
+
+	GPUDescriptorHeapManager::GPUDescriptorHeapManager(DX_Device device, D3D12_DESCRIPTOR_HEAP_TYPE type, int capacity, int persistentCapacity, int buffers) :capacity(capacity) {
+		size = device->GetDescriptorHandleIncrementSize(type);
+		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+		desc.NodeMask = 0;
+		desc.NumDescriptors = capacity;
+		desc.Type = type;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		auto hr = device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap));
+		if (FAILED(hr))
+			throw Exception::FromError(Errors::RunOutOfMemory, "Creating descriptor heaps.");
+		startCPU = heap->GetCPUDescriptorHandleForHeapStart().ptr;
+		startGPU = heap->GetGPUDescriptorHandleForHeapStart().ptr;
+
+		frameCapacity = (capacity - persistentCapacity) / buffers;
+
+		mallocOffset = 0;
+		lastAvailableInBlock = frameCapacity;
+
+		persistentAllocator = new Allocator();
 	}
 
 #pragma endregion
@@ -503,17 +542,17 @@ namespace dx4xb {
 		// This sample does not support fullscreen transitions.
 		factory->MakeWindowAssociation(desc.hWnd, DXGI_MWA_NO_ALT_ENTER);
 
-		//// Initialize descriptor heaps
+		// Initialize descriptor heaps
 
-		//gui_csu = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 100, 100, 1);
+		gui_csu = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 100, 100, 1);
 
-		//gpu_csu = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 900000, 1000, swapChainDesc.BufferCount);
-		//gpu_smp = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2000, 100, swapChainDesc.BufferCount);
+		gpu_csu = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 900000, 1000, swapChainDesc.BufferCount);
+		gpu_smp = new GPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2000, 100, swapChainDesc.BufferCount);
 
-		//cpu_rt = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1000);
-		//cpu_ds = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1000);
-		//cpu_csu = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1000000);
-		//cpu_smp = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2000);
+		cpu_rt = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 1000);
+		cpu_ds = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1000);
+		cpu_csu = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1000000);
+		cpu_smp = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2000);
 
 		//// Create rendertargets resources.
 		//{
