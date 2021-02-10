@@ -3,6 +3,7 @@
 
 #include "pch.h"
 #include "dx4xb.h"
+#include "DirectXTex.h"
 
 namespace dx4xb {
 
@@ -498,6 +499,7 @@ namespace dx4xb {
 			DX_Resource resource,
 			const D3D12_RESOURCE_DESC& desc,
 			int elementStride,
+			int elmeentCount,
 			D3D12_RESOURCE_STATES initialState,
 			CPUAccessibility cpuAccessibility);
 
@@ -521,8 +523,10 @@ namespace dx4xb {
 
 		// Resource description at creation
 		D3D12_RESOURCE_DESC desc;
-		// For buffer resources, get the original element stride width of the resource.
+		// Gets the original element stride width of the resource
 		int elementStride = 0;
+		// Gets the original element count for this resource
+		int elementCount = 1;
 		// Last used state of this resource on the GPU
 		D3D12_RESOURCE_STATES LastUsageState;
 
@@ -672,6 +676,46 @@ namespace dx4xb {
 
 #pragma endregion
 
+#pragma region Imaging
+
+	struct TextureData {
+		int const Width;
+		int const Height;
+		int const MipMaps;
+		union {
+			int const ArraySlices;
+			int const Depth;
+		};
+		DXGI_FORMAT const Format;
+		byte* const Data;
+
+		D3D12_PLACED_SUBRESOURCE_FOOTPRINT* footprints;
+
+		long long const DataSize;
+		bool const FlipY;
+		D3D12_RESOURCE_DIMENSION Dimension;
+
+		TextureData(int width, int height, int mipMaps, int slices, DXGI_FORMAT format, byte* data, long long dataSize, bool flipY = false);
+
+		TextureData(int width, int height, int depth, DXGI_FORMAT format, byte* data, long long dataSize, bool flipY = false);
+
+		~TextureData();
+
+		static gObj<TextureData> CreateEmpty(int width, int height, int mipMaps, int slices, DXGI_FORMAT format);
+
+		static gObj<TextureData> CreateEmpty(int width, int height, int depth, DXGI_FORMAT format);
+
+		static gObj<TextureData> LoadFromFile(const char* filename);
+
+		static void SaveToFile(gObj<TextureData> data, const char* filename);
+
+	private:
+		int pixelStride;
+
+	};
+
+#pragma endregion
+
 #pragma region Device and SwapChain Wrappers
 
 	struct wDevice {
@@ -681,6 +725,9 @@ namespace dx4xb {
 		ID3D12Debug* debugController;
 		PresenterDescription desc;
 		wScheduler* scheduler;
+
+		gObj<Texture2D>* RenderTargets;
+		D3D12_CPU_DESCRIPTOR_HANDLE* RenderTargetsRTV;
 
 #pragma region Descriptor Heaps
 
@@ -745,7 +792,7 @@ namespace dx4xb {
 		// Enable experimental features required for compute-based raytracing fallback.
 		// This will set active D3D12 devices to DEVICE_REMOVED state.
 		// Returns bool whether the call succeeded and the device supports the feature.
-		inline bool EnableComputeRaytracingFallback(CComPtr<IDXGIAdapter1> adapter)
+		bool EnableComputeRaytracingFallback(CComPtr<IDXGIAdapter1> adapter)
 		{
 			ID3D12Device* testDevice;
 			UUID experimentalFeatures[] = { D3D12ExperimentalShaderModels };
@@ -755,7 +802,7 @@ namespace dx4xb {
 		}
 
 		// Returns bool whether the device supports DirectX Raytracing tier.
-		inline bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
+		bool IsDirectXRaytracingSupported(IDXGIAdapter1* adapter)
 		{
 			ID3D12Device* testDevice;
 			D3D12_FEATURE_DATA_D3D12_OPTIONS5 featureSupportData = {};
@@ -764,6 +811,33 @@ namespace dx4xb {
 				&& SUCCEEDED(testDevice->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &featureSupportData, sizeof(featureSupportData)))
 				&& featureSupportData.RaytracingTier != D3D12_RAYTRACING_TIER_NOT_SUPPORTED;
 		}
+
+		gObj<ResourceView> ResolveNullView(wDevice* wrapper, D3D12_RESOURCE_DIMENSION dimension) {
+			static gObj<ResourceView> nullBuffer = nullptr;
+			static gObj<ResourceView> nullTexture1D = nullptr;
+			static gObj<ResourceView> nullTexture2D = nullptr;
+			static gObj<ResourceView> nullTexture3D = nullptr;
+
+			switch (dimension)
+			{
+			case D3D12_RESOURCE_DIMENSION_BUFFER:
+				return nullBuffer ? nullBuffer : nullBuffer = ResourceView::CreateNullView(wrapper, dimension);
+			case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+				return nullTexture1D ? nullTexture1D : nullTexture1D = ResourceView::CreateNullView(wrapper, dimension);
+			case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+				return nullTexture2D ? nullTexture2D : nullTexture2D = ResourceView::CreateNullView(wrapper, dimension);
+			case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+				return nullTexture3D ? nullTexture3D : nullTexture3D = ResourceView::CreateNullView(wrapper, dimension);
+			default:
+				return nullptr;
+			}
+		}
+
+		D3D12_CPU_DESCRIPTOR_HANDLE ResolveNullRTVDescriptor() {
+			return ResolveNullView(this, D3D12_RESOURCE_DIMENSION_TEXTURE2D)->w_view->getRTVHandle();
+		}
+
+
 
 #pragma endregion
 

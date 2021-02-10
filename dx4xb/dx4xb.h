@@ -51,6 +51,9 @@ namespace dx4xb {
 	struct wResource; // Wrapper to DX12 resources
 	struct wResourceView; // Wrapper to DX12 resource views and cached descriptors
 	struct wProgram; // Wrapper to a DX12 Raytracing program settings
+	struct wStateObject; // Wrapper to a DX12 raytracing state object
+	struct wPipelineState; // Wrapper to a DX12 traditional Pipeline state object
+	struct wBindings; // Wrapper to a DX12 pipeline binding object.
 	struct wCmdList; // Wrapper to DX12 command lists
 	struct wScheduler; // Wrapper to DX12 command queues manager, allocators, framing
 	struct wDevice; // Wrapper to DX12 device, swapchains, descriptor heaps and scheduler
@@ -59,7 +62,8 @@ namespace dx4xb {
 
 	struct PresenterDescription;
 	class GPUProcess; // Defines types can populate command lists for further GPU execution
-	class DeviceManager; // Defines types can create resources and dispatch GPU processes
+	class DeviceManager; // Defines base type for entities that can create resources and dispatch GPU processes
+	class Technique; // Defines types can create resources and dispatch GPU processes
 	class Presenter; // Defines a Device manager that can control swap chains and presenting buffers
 	class CommandListManager;
 	class CopyManager;
@@ -67,8 +71,25 @@ namespace dx4xb {
 	class GraphicsManager;
 	class RaytracingManager;
 	class Pipeline;
+	class StaticPipelineBase;
+	template<typename ...PSS> class StaticPipeline;
 	class RaytracingPipeline;
 	class RaytracingProgram;
+	class ComputeBinder;
+	class GraphicsBinder;
+	class RaytracingBinder;
+	class GeometryCollection;
+	class InstanceCollection;
+
+#pragma endregion
+
+#pragma region DSL
+
+	template<typename T>
+	T ___dr(T* a) { return &a; }
+
+#define Execute_OnGPU(methodName) Dispatch_Method(this, &decltype(___dr(this))::methodName)
+#define Execute_OnGPU_Async(methodName) Dispatch_Method_Async(this, &decltype(___dr(this))::methodName)
 
 #pragma endregion
 
@@ -4895,6 +4916,11 @@ namespace dx4xb {
 
 	class ResourceView {
 		friend wDevice;
+		friend CopyManager;
+		friend ComputeManager;
+		friend GraphicsManager;
+		friend RaytracingManager;
+		friend wBindings;
 
 	protected:
 		/// <summary>
@@ -4909,7 +4935,7 @@ namespace dx4xb {
 		/// <summary>
 		/// Creates a new view to a existing resource.
 		/// </summary>
-		ResourceView(wResource* w_resource, wResourceView* w_view);
+		ResourceView(wDevice* w_device, wResource* w_resource, wResourceView* w_view = nullptr);
 
 		/// <summary>
 		/// Tool method to create the initial view for a DX12 resource.
@@ -4932,13 +4958,22 @@ namespace dx4xb {
 		/// <summary>
 		/// Gets the accessibility of the underlaying resource for read or write from cpu.
 		/// </summary>
-		CPUAccessibility getCPUAccessibility();
+		CPUAccessibility getCPUAccessibility() const;
 
-		// Gets the total size in bytes this resource (or subresource) requires
-		long getSizeInBytes();
+		/// <summary>
+		/// Gets the total size in bytes this resource (or subresource) requires 
+		/// </summary>
+		long SizeInBytes(int subresource = 0) const;
 
-		// Gets the size of a single element of this resource
-		int getElementSize();
+		/// <summary>
+		/// Gets the size in bytes of a single element of this resource 
+		/// </summary>
+		int ElementStride() const;
+
+		/// <summary>
+		/// Gets the number of subresources in this view
+		/// </summary>
+		int Subresources() const;
 
 		virtual ~ResourceView();
 
@@ -4979,7 +5014,7 @@ namespace dx4xb {
 		/// </summary>
 		template<typename T>
 		void Write_List(std::initializer_list<T> data) {
-			FromPtr((byte*)data.begin());
+			Write_Ptr((byte*)data.begin());
 		}
 
 		/// <summary>
@@ -4995,24 +5030,26 @@ namespace dx4xb {
 		friend DeviceManager;
 
 		Buffer(
+			wDevice* w_device,
 			wResource* w_resource,
-			wResourceView* w_view,
-			int stride,
-			int elementCount);
+			wResourceView* w_view) :
+			ResourceView(w_device, w_resource, w_view)
+		{
+		}
 	public:
 		/// <summary>
 		/// Number of elements in this buffer.
 		/// </summary>
-		unsigned int const ElementCount;
+		unsigned int ElementCount() const;
 
 		/// <summary>
 		/// Gets the virtual address of a specific element of this buffer on GPU memory.
 		/// </summary>
-		D3D12_GPU_VIRTUAL_ADDRESS GPUVirtualAddress(int element = 0);
+		D3D12_GPU_VIRTUAL_ADDRESS GPUVirtualAddress(int element = 0) const;
 
 		template<typename T>
 		void Write_Element(int index, const T& value) {
-			if (sizeof(T) != getElementSize())
+			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(index, 0, 0, 0), (void*)&value, sizeof(T));
 		}
@@ -5020,7 +5057,7 @@ namespace dx4xb {
 		/// <summary>
 		/// Creates a slice of this buffer considering only elements from start, taking count.
 		/// </summary>
-		gObj<Buffer> Slice(int start, int count);
+		gObj<Buffer> Slice(int start, int count) const;
 	};
 
 	class Texture1D : public ResourceView {
@@ -5028,40 +5065,36 @@ namespace dx4xb {
 
 	protected:
 		Texture1D(
+			wDevice* w_device,
 			wResource* w_resource,
-			wResourceView* w_view,
-			DXGI_FORMAT format,
-			int width,
-			int mips,
-			int arrayLength) :
-			ResourceView(w_resource, w_view),
-			Format(format),
-			Width(width),
-			Mips(mips),
-			ArrayLength(arrayLength)
+			wResourceView* w_view) :
+			ResourceView(w_device, w_resource, w_view)
 		{
 		}
 	public:
 		// Gets the format of each element in this Texture1D
-		DXGI_FORMAT const Format;
+		DXGI_FORMAT Format() const;
+
 		// Gets the number of elements for this Texture1D
-		unsigned int const Width;
+		unsigned int Width() const;
+
 		// Gets the length of this Texture1D array
-		unsigned int const ArrayLength;
+		unsigned int ArrayLength() const;
+
 		// Gets the number of mips of this Texture1D
-		unsigned int const Mips;
+		unsigned int Mips() const;
 
-		gObj<Texture1D> Slice_Mips(int start, int count);
+		gObj<Texture1D> Slice_Mips(int start, int count) const;
 
-		gObj<Texture1D> Slice_Array(int start, int count);
+		gObj<Texture1D> Slice_Array(int start, int count) const;
 
-		gObj<Texture1D> Subresource(int mip, int arrayIndex) {
+		gObj<Texture1D> Subresource(int mip, int arrayIndex) const {
 			return Slice_Array(arrayIndex, 1)->Slice_Mips(mip, 1);
 		}
 
 		template<typename T>
 		void Write_Element(int tx, const T& value, int mip = 0, int slice = 0) {
-			if (sizeof(T) != getElementSize())
+			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, 0, slice, mip), (void*)&value, sizeof(T));
 		}
@@ -5069,46 +5102,42 @@ namespace dx4xb {
 
 	class Texture2D : public ResourceView {
 		friend DeviceManager;
-
+		friend wDevice;
+		friend CopyManager;
 	protected:
 		Texture2D(
+			wDevice* w_device,
 			wResource* w_resource,
-			wResourceView* w_view,
-			DXGI_FORMAT format,
-			int width,
-			int height,
-			int mips,
-			int arrayLength) :
-			ResourceView(w_resource, w_view),
-			Format(format),
-			Width(width),
-			Height(height),
-			Mips(mips),
-			ArrayLength(arrayLength) {
+			wResourceView* w_view) :
+			ResourceView(w_device, w_resource, w_view) {
 		}
 	public:
 		// Gets the format of each element in this Texture2D
-		DXGI_FORMAT const Format;
+		DXGI_FORMAT Format() const;
+
 		// Gets the width for this Texture2D
-		unsigned int const Width;
+		unsigned int Width() const;
+
 		// Gets the height for this Texture2D
-		unsigned int const Height;
+		unsigned int Height() const;
+
 		// Gets the length of this Texture2D array
-		unsigned int const ArrayLength;
+		unsigned int ArrayLength() const;
+
 		// Gets the number of mips of this Texture2D
-		unsigned int const Mips;
+		unsigned int Mips() const;
 
-		gObj<Texture2D> Slice_Mips(int start, int count);
+		gObj<Texture2D> Slice_Mips(int start, int count) const;
 
-		gObj<Texture2D> Slice_Array(int start, int count);
+		gObj<Texture2D> Slice_Array(int start, int count) const;
 
-		gObj<Texture2D> Subresource(int mip, int arrayIndex) {
+		gObj<Texture2D> Subresource(int mip, int arrayIndex) const {
 			return Slice_Array(arrayIndex, 1)->Slice_Mips(mip, 1);
 		}
 
 		template<typename T>
 		void Write_Element(int tx, int ty, const T& value, int mip = 0, int slice = 0) {
-			if (sizeof(T) != getElementSize())
+			if (sizeof(T) != this->ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, ty, slice, mip), (void*)&value, sizeof(T));
 		}
@@ -5119,37 +5148,28 @@ namespace dx4xb {
 
 	protected:
 		Texture3D(
+			wDevice* w_device,
 			wResource* w_resource,
-			wResourceView* w_view,
-			DXGI_FORMAT format,
-			int width,
-			int height,
-			int depth,
-			int mips) :
-			ResourceView(w_resource, w_view),
-			Format(format),
-			Width(width),
-			Height(height),
-			Mips(mips),
-			Depth(depth) {
+			wResourceView* w_view) :
+			ResourceView(w_device, w_resource, w_view) {
 		}
 	public:
 		// Gets the format of each element in this Texture2D
-		DXGI_FORMAT const Format;
+		DXGI_FORMAT Format() const;
 		// Gets the width for this Texture3D
-		unsigned int const Width;
+		unsigned int Width() const;
 		// Gets the height for this Texture3D
-		unsigned int const Height;
+		unsigned int Height() const;
 		// Gets the depth (number of slices) of this Texture3D
-		unsigned int const Depth;
+		unsigned int Depth() const;
 		// Gets the number of mips of this Texture3D
-		unsigned int const Mips;
+		unsigned int Mips() const;
 
-		gObj<Texture3D> Slice_Mips(int start, int count);
+		gObj<Texture3D> Slice_Mips(int start, int count) const;
 
 		template<typename T>
 		void Write_Element(int tx, int ty, int tz, const T& value, int mip = 0) {
-			if (sizeof(T) != getElementSize())
+			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, ty, tz, mip), (void*)&value, sizeof(T));
 		}
@@ -5205,6 +5225,44 @@ namespace dx4xb {
 		virtual void OnCollect(gObj<CommandListManager> manager) = 0;
 		// Gets the type of engine required by this process
 		virtual Engine RequiredEngine() = 0;
+	};
+
+	template<typename A>
+	struct EngineType {
+		static const Engine Type;
+	};
+	template<>
+	struct EngineType<GraphicsManager> {
+		static const Engine Type = Engine::Direct;
+	};
+	template<>
+	struct EngineType<RaytracingManager> {
+		static const Engine Type = Engine::Direct;
+	};
+	template<>
+	struct EngineType<ComputeManager> {
+		static const Engine Type = Engine::Compute;
+	};
+	template<>
+	struct EngineType<CopyManager> {
+		static const Engine Type = Engine::Copy;
+	};
+
+	template<typename T, typename A>
+	struct MethodAsGPUProcess : public GPUProcess {
+		T* instance;
+		typedef void(T::* Member)(gObj<A>);
+		Member function;
+		MethodAsGPUProcess(T* instance, Member function) : instance(instance), function(function) {
+		}
+
+		void OnCollect(gObj<CommandListManager> manager) {
+			(instance->*function)(manager.Dynamic_Cast<A>());
+		}
+
+		Engine RequiredEngine() {
+			return EngineType<A>::Type;
+		}
 	};
 
 #pragma endregion
@@ -13534,8 +13592,6 @@ namespace dx4xb {
 		}
 	};
 
-
-
 #pragma endregion
 
 #pragma region Shader handles
@@ -13640,13 +13696,16 @@ namespace dx4xb {
 
 #pragma endregion
 
-
 	/// <summary>
 	/// Represents a base class for all types of pipeline settings objects.
 	/// Compute and Graphics pipelines will extend StaticPipeline and
 	/// Raytracing pipeline will extend DynamicPipeline.
 	/// </summary>
 	class Pipeline {
+		friend DeviceManager;
+		friend ComputeManager;
+		friend GraphicsManager;
+		friend RaytracingManager;
 	protected:
 		virtual Engine GetEngine() = 0;
 		virtual void OnCreate(wDevice* w_device) = 0;
@@ -13654,7 +13713,884 @@ namespace dx4xb {
 		virtual void OnDispatch(wCmdList* w_cmdList) = 0;
 	};
 
+#pragma region Binders
 
+	class ComputeBinder {
+		friend StaticPipelineBase;
+		friend RaytracingPipeline;
+		friend wPipelineState;
+		friend RaytracingProgram;
+		friend RaytracingManager;
+		friend class DX_RTProgram;
+
+		void CreateSignature(
+			DX_Device device,
+			D3D12_ROOT_SIGNATURE_FLAGS flags,
+			DX_RootSignature& rootSignature,
+			int& rootSignatureSize
+		);
+
+	protected:
+		wBindings* __InternalBindingObject;
+	
+		D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY::D3D12_SHADER_VISIBILITY_ALL;
+		int space = 0;
+		bool collectGlobal = true;
+
+		void AddConstant(int slot, void* data, int size);
+
+		void AddDescriptorRange(int slot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resource);
+
+		void AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count);
+
+		void AddStaticSampler(int slot, const Sampler& sampler);
+	
+	public:
+		ComputeBinder();
+		virtual ~ComputeBinder() {
+			delete __InternalBindingObject;
+		}
+
+		/// <summary>
+		/// Specifies next bindings are activated when the pipeline is set.
+		/// </summary>
+		void Bindings_OnSet() {
+			this->collectGlobal = true;
+		}
+
+		/// <summary>
+		/// Specifies next bindings are activated when dispatching
+		/// </summary>
+		void Bindings_OnDispatch() {
+			this->collectGlobal = false;
+		}
+
+		// Change the space for the next bindings
+		void Space(int space) { this->space = space; }
+
+		void CBV(int slot, gObj<Buffer>& const buffer)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_CBV,
+				D3D12_RESOURCE_DIMENSION_BUFFER,
+				(void*)&buffer);
+		}
+
+		template<typename T>
+		void CBV(int slot, T& data) {
+			AddConstant(slot, (void*)&data, ((sizeof(T) - 1) / 4) + 1);
+		}
+
+		void SMP_Static(int slot, const Sampler& sampler) {
+			AddStaticSampler(slot, sampler);
+		}
+
+		void SMP(int slot, gObj<Sampler>& const sampler) {
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+				D3D12_RESOURCE_DIMENSION_UNKNOWN,
+				(void*)&sampler);
+		}
+
+		void SRV(int slot, gObj<Buffer>& const buffer)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_BUFFER,
+				(void*)&buffer);
+		}
+		void SRV(int slot, gObj<Texture1D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
+				(void*)&texture);
+		}
+		void SRV(int slot, gObj<Texture2D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+				(void*)&texture);
+		}
+		void SRV(int slot, gObj<Texture3D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
+				(void*)&texture);
+		}
+
+		void UAV(int slot, gObj<Buffer>& const buffer)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_BUFFER,
+				(void*)&buffer);
+		}
+		void UAV(int slot, gObj<Texture1D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
+				(void*)&texture);
+		}
+		void UAV(int slot, gObj<Texture2D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+				(void*)&texture);
+		}
+		void UAV(int slot, gObj<Texture3D>& const texture)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
+				(void*)&texture);
+		}
+
+		void SMP_Array(int slot, gObj<Sampler>*& const samplers, int& const count) {
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
+				D3D12_RESOURCE_DIMENSION_UNKNOWN,
+				(void*)&samplers, &count);
+		}
+
+		void SRV_Array(int slot, gObj<Buffer>*& const buffers, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_BUFFER,
+				(void*)&buffers, &count);
+		}
+		void SRV_Array(int slot, gObj<Texture1D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
+				(void*)&textures, &count);
+		}
+		void SRV_Array(int slot, gObj<Texture2D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+				(void*)&textures, &count);
+		}
+		void SRV_Array(int slot, gObj<Texture3D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
+				(void*)&textures, &count);
+		}
+
+		void UAV_Array(int slot, gObj<Buffer>*& const buffers, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_BUFFER,
+				(void*)&buffers, &count);
+		}
+		void UAV_Array(int slot, gObj<Texture1D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
+				(void*)&textures, &count);
+		}
+		void UAV_Array(int slot, gObj<Texture2D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+				(void*)&textures, &count);
+		}
+		void UAV_Array(int slot, gObj<Texture3D>*& const textures, int& const count)
+		{
+			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
+				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
+				(void*)&textures, &count);
+		}
+
+		bool HasSomeBindings();
+	};
+
+	class GraphicsBinder : public ComputeBinder {
+	protected:
+		void SetRenderTarget(int slot, gObj<Texture2D>& const resource);
+		void SetDSV(gObj<Texture2D>& const resource);
+	public:
+		GraphicsBinder();
+
+		void Bindings_All() {
+			this->visibility = D3D12_SHADER_VISIBILITY_ALL;
+		}
+
+		void Bindings_VertexShader() {
+			this->visibility = D3D12_SHADER_VISIBILITY_VERTEX;
+		}
+
+		void Bindings_PixelShader() {
+			this->visibility = D3D12_SHADER_VISIBILITY_PIXEL;
+		}
+
+		void Bindings_GeometryShader() {
+			this->visibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
+		}
+
+		void Bindings_HullShader() {
+			this->visibility = D3D12_SHADER_VISIBILITY_HULL;
+		}
+
+		void Bindings_DomainShader() {
+			this->visibility = D3D12_SHADER_VISIBILITY_DOMAIN;
+		}
+
+		void RTV(int slot, gObj<Texture2D>& const texture) {
+			SetRenderTarget(slot, texture);
+		}
+
+		void DSV(gObj<Texture2D>& const texture) {
+			SetDSV(texture);
+		}
+	};
+
+	class RaytracingBinder : public ComputeBinder {
+	protected:
+	public:
+		RaytracingBinder();
+		void ADS(int slot, gObj<InstanceCollection>& const scene);
+	};
+
+#pragma endregion
+
+#pragma region Static Pipelines
+
+#pragma region Pipeline Subobject states
+
+	struct DefaultStateValue {
+
+		operator D3D12_RASTERIZER_DESC () {
+			D3D12_RASTERIZER_DESC d = {};
+			d.FillMode = D3D12_FILL_MODE_SOLID;
+			d.CullMode = D3D12_CULL_MODE_NONE;
+			d.FrontCounterClockwise = FALSE;
+			d.DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+			d.DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+			d.SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+			d.DepthClipEnable = TRUE;
+			d.MultisampleEnable = FALSE;
+			d.AntialiasedLineEnable = FALSE;
+			d.ForcedSampleCount = 0;
+			d.ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+			return d;
+		}
+
+		operator D3D12_DEPTH_STENCIL_DESC () {
+			D3D12_DEPTH_STENCIL_DESC d = { };
+
+			d.DepthEnable = FALSE;
+			d.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+			d.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+			d.StencilEnable = FALSE;
+			d.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+			d.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+			const D3D12_DEPTH_STENCILOP_DESC defaultStencilOp =
+			{ D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+			d.FrontFace = defaultStencilOp;
+			d.BackFace = defaultStencilOp;
+
+			return d;
+		}
+
+		operator D3D12_BLEND_DESC () {
+			D3D12_BLEND_DESC d = { };
+			d.AlphaToCoverageEnable = FALSE;
+			d.IndependentBlendEnable = FALSE;
+			const D3D12_RENDER_TARGET_BLEND_DESC defaultRenderTargetBlendDesc =
+			{
+				FALSE,FALSE,
+				D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+				D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+				D3D12_LOGIC_OP_NOOP,
+				D3D12_COLOR_WRITE_ENABLE_ALL,
+			};
+			for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+				d.RenderTarget[i] = defaultRenderTargetBlendDesc;
+			return d;
+		}
+
+		operator DXGI_SAMPLE_DESC() {
+			DXGI_SAMPLE_DESC d = { };
+			d.Count = 1;
+			d.Quality = 0;
+			return d;
+		}
+
+		operator D3D12_DEPTH_STENCIL_DESC1 () {
+			D3D12_DEPTH_STENCIL_DESC1 _Description = { };
+			_Description.DepthEnable = TRUE;
+			_Description.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+			_Description.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+			_Description.StencilEnable = FALSE;
+			_Description.StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+			_Description.StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+			const D3D12_DEPTH_STENCILOP_DESC defaultStencilOp =
+			{ D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC_ALWAYS };
+			_Description.FrontFace = defaultStencilOp;
+			_Description.BackFace = defaultStencilOp;
+			_Description.DepthBoundsTestEnable = false;
+			return _Description;
+		}
+	};
+
+	struct DefaultSampleMask {
+		operator UINT()
+		{
+			return UINT_MAX;
+		}
+	};
+
+	struct DefaultTopology {
+		operator D3D12_PRIMITIVE_TOPOLOGY_TYPE() {
+			return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+		}
+	};
+
+	// Adapted from d3dx12 class
+	template<typename Description, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type, typename DefaultValue = Description>
+	struct alignas(void*) PipelineSubobjectState {
+		template<typename ...A> friend class StaticPipeline;
+
+		D3D12_PIPELINE_STATE_SUBOBJECT_TYPE _Type;
+		Description _Description;
+
+		static D3D12_PIPELINE_STATE_SUBOBJECT_TYPE getType() { return Type; }
+
+		inline Description& getDescription() {
+			return _Description;
+		}
+
+		PipelineSubobjectState() noexcept : _Type(Type), _Description(DefaultValue()) {}
+		PipelineSubobjectState(Description const& d) : _Type(Type), _Description(d) {}
+		PipelineSubobjectState& operator=(Description const& i) { _Description = i; return *this; }
+		operator Description() const { return _Description; }
+		operator Description& () { return _Description; }
+
+		static const D3D12_PIPELINE_STATE_SUBOBJECT_TYPE PipelineState_Type = Type;
+	};
+
+	struct DebugStateManager : public PipelineSubobjectState< D3D12_PIPELINE_STATE_FLAGS, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_FLAGS> {
+		void Debug() { _Description = D3D12_PIPELINE_STATE_FLAG_TOOL_DEBUG; }
+		void NoDebug() { _Description = D3D12_PIPELINE_STATE_FLAG_NONE; }
+	};
+
+	struct NodeMaskStateManager : public PipelineSubobjectState< UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_NODE_MASK> {
+		void ExecutionAt(int node) {
+			_Description = 1 << node;
+		}
+		void ExecutionSingleAdapter() {
+			_Description = 0;
+		}
+	};
+
+	struct RootSignatureStateManager : public PipelineSubobjectState< ID3D12RootSignature*, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE> {
+		template<typename ...PSS> friend class StaticPipeline;
+	private:
+		void SetRootSignature(ID3D12RootSignature* rootSignature) {
+			_Description = rootSignature;
+		}
+	};
+
+	struct InputLayoutStateManager : public PipelineSubobjectState< D3D12_INPUT_LAYOUT_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_INPUT_LAYOUT> {
+		void InputLayout(std::initializer_list<VertexElement> elements) {
+			if (_Description.pInputElementDescs != nullptr)
+				delete[] _Description.pInputElementDescs;
+			auto layout = new D3D12_INPUT_ELEMENT_DESC[elements.size()];
+			int offset = 0;
+			auto current = elements.begin();
+			for (int i = 0; i < elements.size(); i++)
+			{
+				int size = 0;
+				layout[i] = current->createDesc(offset, size);
+				offset += size;
+				current++;
+			}
+			_Description.pInputElementDescs = layout;
+			_Description.NumElements = elements.size();
+		}
+
+		template<int N>
+		void InputLayout(VertexElement(&elements)[N]) {
+			if (_Description.pInputElementDescs != nullptr)
+				delete[] _Description.pInputElementDescs;
+			auto layout = new D3D12_INPUT_ELEMENT_DESC[N];
+			int offset = 0;
+			for (int i = 0; i < N; i++)
+			{
+				int size = 0;
+				layout[i] = elements[i]->createDesc(offset, size);
+				offset += size;
+			}
+			_Description.pInputElementDescs = layout;
+			_Description.NumElements = N;
+		}
+	};
+
+	struct IndexBufferStripStateManager : public PipelineSubobjectState< D3D12_INDEX_BUFFER_STRIP_CUT_VALUE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_IB_STRIP_CUT_VALUE> {
+		void DisableIndexBufferCut() {
+			_Description = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_DISABLED;
+		}
+		void IndexBufferCutAt32BitMAX() {
+			_Description = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFF;
+		}
+		void IndexBufferCutAt64BitMAX() {
+			_Description = D3D12_INDEX_BUFFER_STRIP_CUT_VALUE_0xFFFFFFFF;
+		}
+	};
+
+	struct PrimitiveTopologyStateManager : public PipelineSubobjectState< D3D12_PRIMITIVE_TOPOLOGY_TYPE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY, DefaultTopology> {
+		void CustomTopology(D3D12_PRIMITIVE_TOPOLOGY_TYPE type) {
+			_Description = type;
+		}
+		void TrianglesTopology() {
+			CustomTopology(D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE);
+		}
+		void PointsTopology() {
+			CustomTopology(D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT);
+		}
+		void LinesTopology() {
+			CustomTopology(D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE);
+		}
+	};
+
+	template<D3D12_PIPELINE_STATE_SUBOBJECT_TYPE Type>
+	struct ShaderStageStateManager : public PipelineSubobjectState< D3D12_SHADER_BYTECODE, Type> {
+	protected:
+		void FromBytecode(const D3D12_SHADER_BYTECODE& shaderBytecode) {
+			this->_Description = shaderBytecode;
+		}
+	};
+
+	struct VertexShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VS> {
+		void VertexShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct PixelShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS> {
+		void PixelShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct GeometryShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_GS> {
+		void GeometryShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct HullShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_HS> {
+		void HullShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct DomainShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DS> {
+		void DomainShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct ComputeShaderStageStateManager : public ShaderStageStateManager <D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CS> {
+		void ComputeShader(const D3D12_SHADER_BYTECODE& bytecode) {
+			ShaderStageStateManager::FromBytecode(bytecode);
+		}
+	};
+
+	struct StreamOutputStateManager : public PipelineSubobjectState< D3D12_STREAM_OUTPUT_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_STREAM_OUTPUT> {
+	};
+
+	struct BlendingStateManager : public PipelineSubobjectState< D3D12_BLEND_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND, DefaultStateValue> {
+		void AlphaToCoverage(bool enable = true) {
+			_Description.AlphaToCoverageEnable = enable;
+		}
+		void IndependentBlend(bool enable = true) {
+			_Description.IndependentBlendEnable = enable;
+		}
+		void BlendAtRenderTarget(
+			int renderTarget = 0,
+			bool enable = true,
+			D3D12_BLEND_OP operation = D3D12_BLEND_OP_ADD,
+			D3D12_BLEND src = D3D12_BLEND_SRC_ALPHA,
+			D3D12_BLEND dst = D3D12_BLEND_INV_SRC_ALPHA,
+			D3D12_BLEND_OP alphaOperation = D3D12_BLEND_OP_MAX,
+			D3D12_BLEND srcAlpha = D3D12_BLEND_SRC_ALPHA,
+			D3D12_BLEND dstAlpha = D3D12_BLEND_DEST_ALPHA,
+			bool enableLogicOperation = false,
+			D3D12_LOGIC_OP logicOperation = D3D12_LOGIC_OP_COPY
+		) {
+			D3D12_RENDER_TARGET_BLEND_DESC d;
+			d.BlendEnable = enable;
+			d.BlendOp = operation;
+			d.BlendOpAlpha = alphaOperation;
+			d.SrcBlend = src;
+			d.DestBlend = dst;
+			d.SrcBlendAlpha = srcAlpha;
+			d.DestBlendAlpha = dstAlpha;
+			d.LogicOpEnable = enableLogicOperation;
+			d.LogicOp = logicOperation;
+			d.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+			_Description.RenderTarget[renderTarget] = d;
+		}
+		void BlendForAllRenderTargets(
+			bool enable = true,
+			D3D12_BLEND_OP operation = D3D12_BLEND_OP_ADD,
+			D3D12_BLEND src = D3D12_BLEND_SRC_ALPHA,
+			D3D12_BLEND dst = D3D12_BLEND_INV_SRC_ALPHA,
+			D3D12_BLEND_OP alphaOperation = D3D12_BLEND_OP_MAX,
+			D3D12_BLEND srcAlpha = D3D12_BLEND_SRC_ALPHA,
+			D3D12_BLEND dstAlpha = D3D12_BLEND_DEST_ALPHA,
+			bool enableLogicOperation = false,
+			D3D12_LOGIC_OP logicOperation = D3D12_LOGIC_OP_COPY
+		) {
+			D3D12_RENDER_TARGET_BLEND_DESC d;
+			d.BlendEnable = enable;
+			d.BlendOp = operation;
+			d.BlendOpAlpha = alphaOperation;
+			d.SrcBlend = src;
+			d.DestBlend = dst;
+			d.SrcBlendAlpha = srcAlpha;
+			d.DestBlendAlpha = dstAlpha;
+			d.LogicOpEnable = enableLogicOperation;
+			d.LogicOp = logicOperation;
+			d.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+
+			for (int i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; i++)
+				_Description.RenderTarget[i] = d;
+		}
+		void BlendDisabledAtRenderTarget(int renderTarget) {
+			BlendAtRenderTarget(renderTarget, false);
+		}
+		void BlendDisabled() {
+			BlendForAllRenderTargets(false);
+		}
+	};
+
+	struct DepthStencilStateManager : public PipelineSubobjectState< D3D12_DEPTH_STENCIL_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL, DefaultStateValue> {
+		void NoDepthTest() {
+			_Description = {};
+		}
+		void DepthTest(bool enable = true, bool writeDepth = true, D3D12_COMPARISON_FUNC comparison = D3D12_COMPARISON_FUNC_LESS_EQUAL) {
+			_Description.DepthEnable = enable;
+			_Description.DepthWriteMask = writeDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+			_Description.DepthFunc = comparison;
+		}
+		void StencilTest(bool enable = true, byte readMask = 0xFF, byte writeMask = 0xFF) {
+			_Description.StencilEnable = enable;
+			_Description.StencilReadMask = readMask;
+			_Description.StencilWriteMask = writeMask;
+		}
+		void StencilOperationAtFront(D3D12_STENCIL_OP fail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP depthFail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP pass = D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC function = D3D12_COMPARISON_FUNC_ALWAYS) {
+			_Description.FrontFace.StencilFailOp = fail;
+			_Description.FrontFace.StencilDepthFailOp = depthFail;
+			_Description.FrontFace.StencilPassOp = pass;
+			_Description.FrontFace.StencilFunc = function;
+		}
+		void StencilOperationAtBack(D3D12_STENCIL_OP fail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP depthFail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP pass = D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC function = D3D12_COMPARISON_FUNC_ALWAYS) {
+			_Description.BackFace.StencilFailOp = fail;
+			_Description.BackFace.StencilDepthFailOp = depthFail;
+			_Description.BackFace.StencilPassOp = pass;
+			_Description.BackFace.StencilFunc = function;
+		}
+	};
+
+	struct DepthStencilWithDepthBoundsStateManager : public PipelineSubobjectState< D3D12_DEPTH_STENCIL_DESC1, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL1, DefaultStateValue> {
+		void DepthTest(bool enable = true, bool writeDepth = true, D3D12_COMPARISON_FUNC comparison = D3D12_COMPARISON_FUNC_LESS_EQUAL) {
+			_Description.DepthEnable = enable;
+			_Description.DepthWriteMask = writeDepth ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+			_Description.DepthFunc = comparison;
+		}
+		void StencilTest(bool enable = true, byte readMask = 0xFF, byte writeMask = 0xFF) {
+			_Description.StencilEnable = enable;
+			_Description.StencilReadMask = readMask;
+			_Description.StencilWriteMask = writeMask;
+		}
+		void StencilOperationAtFront(D3D12_STENCIL_OP fail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP depthFail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP pass = D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC function = D3D12_COMPARISON_FUNC_ALWAYS) {
+			_Description.FrontFace.StencilFailOp = fail;
+			_Description.FrontFace.StencilDepthFailOp = depthFail;
+			_Description.FrontFace.StencilPassOp = pass;
+			_Description.FrontFace.StencilFunc = function;
+		}
+		void StencilOperationAtBack(D3D12_STENCIL_OP fail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP depthFail = D3D12_STENCIL_OP_KEEP, D3D12_STENCIL_OP pass = D3D12_STENCIL_OP_KEEP, D3D12_COMPARISON_FUNC function = D3D12_COMPARISON_FUNC_ALWAYS) {
+			_Description.BackFace.StencilFailOp = fail;
+			_Description.BackFace.StencilDepthFailOp = depthFail;
+			_Description.BackFace.StencilPassOp = pass;
+			_Description.BackFace.StencilFunc = function;
+		}
+		void DepthBoundsTest(bool enable) {
+			_Description.DepthBoundsTestEnable = enable;
+		}
+	};
+
+	struct DepthStencilFormatStateManager : public PipelineSubobjectState< DXGI_FORMAT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT> {
+		void DepthStencilFormat(DXGI_FORMAT format = DXGI_FORMAT_D32_FLOAT) {
+			_Description = format;
+		}
+	};
+
+	struct RasterizerStateManager : public PipelineSubobjectState< D3D12_RASTERIZER_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER, DefaultStateValue> {
+		void AntialiasedLine(bool enable = true, bool multisample = true) {
+			_Description.AntialiasedLineEnable = false;
+			_Description.MultisampleEnable = multisample;
+		}
+		void ConservativeRasterization(bool enable = true) {
+			_Description.ConservativeRaster = enable ? D3D12_CONSERVATIVE_RASTERIZATION_MODE_ON : D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+		}
+		void CullMode(D3D12_CULL_MODE mode = D3D12_CULL_MODE_NONE) {
+			_Description.CullMode = mode;
+		}
+		void FillMode(D3D12_FILL_MODE mode = D3D12_FILL_MODE_SOLID) {
+			_Description.FillMode = mode;
+		}
+		void DepthBias(int depthBias = 1, float slopeScale = 0, float clamp = D3D12_FLOAT32_MAX)
+		{
+			_Description.DepthBias = depthBias;
+			_Description.SlopeScaledDepthBias = slopeScale;
+			_Description.DepthBiasClamp = clamp;
+		}
+		void ForcedSampleCount(UINT value) {
+			_Description.ForcedSampleCount = value;
+		}
+	};
+
+	struct RenderTargetFormatsStateManager : public PipelineSubobjectState< D3D12_RT_FORMAT_ARRAY, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS> {
+		void RenderTargetFormatAt(int slot, DXGI_FORMAT format) {
+			if (slot >= _Description.NumRenderTargets)
+				_Description.NumRenderTargets = slot + 1;
+
+			_Description.RTFormats[slot] = format;
+		}
+		void AllRenderTargets(int numberOfRTs, DXGI_FORMAT format) {
+			_Description.NumRenderTargets = numberOfRTs;
+			for (int i = 0; i < numberOfRTs; i++)
+				_Description.RTFormats[i] = format;
+		}
+	};
+
+	struct MultisamplingStateManager : public PipelineSubobjectState< DXGI_SAMPLE_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC, DefaultStateValue> {
+		void Multisampling(int count = 1, int quality = 0) {
+			_Description.Count = count;
+			_Description.Quality = quality;
+		}
+	};
+
+	struct BlendSampleMaskStateManager : public PipelineSubobjectState< UINT, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK, DefaultSampleMask> {
+		void BlendSampleMask(UINT value = UINT_MAX) {
+			_Description = value;
+		}
+	};
+
+	struct MultiViewInstancingStateManager : public PipelineSubobjectState< D3D12_VIEW_INSTANCING_DESC, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_VIEW_INSTANCING, DefaultStateValue> {
+		void MultipleViews(std::initializer_list<D3D12_VIEW_INSTANCE_LOCATION> views, D3D12_VIEW_INSTANCING_FLAGS flags = D3D12_VIEW_INSTANCING_FLAG_NONE) {
+			_Description.ViewInstanceCount = views.size();
+			auto newViews = new D3D12_VIEW_INSTANCE_LOCATION[views.size()];
+			auto current = views.begin();
+			for (int i = 0; i < views.size(); i++) {
+				newViews[i] = *current;
+				current++;
+			}
+			if (_Description.pViewInstanceLocations != nullptr)
+				delete[] _Description.pViewInstanceLocations;
+			_Description.pViewInstanceLocations = newViews;
+		}
+	};
+
+	//typedef PipelineSubobjectState< D3D12_CACHED_PIPELINE_STATE, D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_CACHED_PSO>                        CD3DX12_PIPELINE_STATE_STREAM_CACHED_PSO;
+
+#pragma endregion
+
+	class StaticPipelineBase : public Pipeline {
+		friend DeviceManager;
+	protected:
+
+		wPipelineState* w_pipeline;
+
+		virtual void* getSettingObject() = 0;
+
+		virtual int getSettingObjectSize() = 0;
+
+		virtual D3D12_ROOT_SIGNATURE_FLAGS getRootFlags() {
+			return D3D12_ROOT_SIGNATURE_FLAG_NONE;
+		}
+
+		virtual void CompleteStateObject(DX_RootSignature rootSignature) = 0;
+
+		virtual void OnCreate(wDevice* w_device) override;
+
+		virtual void OnSet(wCmdList* w_cmdList) override;
+
+		virtual void OnDispatch(wCmdList* w_cmdList) override;
+
+		virtual gObj<ComputeBinder> OnCollectBindings() = 0;
+
+		// When implemented by users, this method will setup the pipeline object after created
+		// Use this method to specify how to load shaders and set other default pipeline settings
+		virtual void Setup() = 0;
+	};
+
+	// -- Abstract pipeline object (can be Graphics or Compute)
+	// Allows creation of root signatures and leaves abstract the pipeline state object creation
+	template<typename ...PSS>
+	class StaticPipeline : public StaticPipelineBase {
+
+		void* getSettingObject() { return set; }
+
+		int getSettingObjectSize() { return sizeof(*set); }
+
+		template<typename S>
+		bool HasSubobjectState() {
+			return ((S*)set)->_Type == S::getType();
+		}
+
+#pragma region Query to know if some stage is active
+		bool Using_VS() {
+			return HasSubobjectState<VertexShaderStageStateManager>()
+				&& ((VertexShaderStageStateManager*)set)->getDescription().pShaderBytecode != nullptr;
+		}
+		bool Using_PS() {
+			return HasSubobjectState<PixelShaderStageStateManager>()
+				&& ((PixelShaderStageStateManager*)set)->getDescription().pShaderBytecode != nullptr;
+		}
+		bool Using_GS() {
+			return HasSubobjectState<GeometryShaderStageStateManager>()
+				&& ((GeometryShaderStageStateManager*)set)->getDescription().pShaderBytecode != nullptr;
+		}
+		bool Using_HS() {
+			return HasSubobjectState<HullShaderStageStateManager>()
+				&& ((HullShaderStageStateManager*)set)->getDescription().pShaderBytecode != nullptr;
+		}
+		bool Using_DS() {
+			return HasSubobjectState<DomainShaderStageStateManager>()
+				&& ((DomainShaderStageStateManager*)set)->getDescription().pShaderBytecode != nullptr;
+		}
+		bool Using_CS() {
+			return HasSubobjectState<ComputeShaderStageStateManager>()
+				&& ((ComputeShaderStageStateManager*)set)->_Description.pShaderBytecode != nullptr;
+		}
+
+		Engine GetEngine() {
+			if (Using_CS())
+				return Engine::Compute;
+			return Engine::Direct;
+		}
+
+		D3D12_ROOT_SIGNATURE_FLAGS getRootFlags() {
+			auto flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+			if (!Using_CS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+			if (!Using_VS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_VERTEX_SHADER_ROOT_ACCESS;
+			if (!Using_PS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_PIXEL_SHADER_ROOT_ACCESS;
+			if (!Using_GS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
+			if (!Using_HS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS;
+			if (!Using_DS()) flags |= D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS;
+			return flags;
+		}
+
+		void CompleteStateObject(DX_RootSignature rootSignature) {
+			if (HasSubobjectState<RootSignatureStateManager>())
+			{
+				((RootSignatureStateManager*)set)->SetRootSignature(rootSignature);
+			}
+			if (HasSubobjectState<RenderTargetFormatsStateManager>())
+			{
+				RenderTargetFormatsStateManager* rtfsm = (RenderTargetFormatsStateManager*)set;
+				if (rtfsm->_Description.NumRenderTargets == 0)
+					rtfsm->AllRenderTargets(8, DXGI_FORMAT_R8G8B8A8_UNORM);
+			}
+			if (HasSubobjectState<DepthStencilFormatStateManager>())
+			{
+				DepthStencilFormatStateManager* dsfsm = (DepthStencilFormatStateManager*)set;
+				dsfsm->_Description = DXGI_FORMAT_D32_FLOAT;
+			}
+		}
+
+#pragma endregion
+	protected:
+
+		// Object used to set all possible states of this pipeline
+		// inheriting from different state managers.
+		// This object is the pipeline settings object in DX12.
+		struct PipelineStateStreamDescription : PSS...{
+		}* const set;
+
+		StaticPipeline() : set(new PipelineStateStreamDescription()) {
+		}
+
+	};
+
+	// Used as a common compute pipeline binding object
+	struct ComputePipeline : public StaticPipeline<
+		DebugStateManager,
+		ComputeShaderStageStateManager,
+		NodeMaskStateManager,
+		RootSignatureStateManager
+	> {
+
+	private:
+		gObj<ComputeBinder> OnCollectBindings() {
+			gObj<ComputeBinder> binder = new ComputeBinder();
+			Bindings(binder);
+			return binder;
+		}
+
+	protected:
+		virtual void Bindings(gObj<ComputeBinder> binder) { }
+	};
+
+	// Used as a common graphics pipeline binding object
+	struct GraphicsPipeline : public StaticPipeline<
+		DebugStateManager,
+		VertexShaderStageStateManager,
+		PixelShaderStageStateManager,
+		DomainShaderStageStateManager,
+		HullShaderStageStateManager,
+		GeometryShaderStageStateManager,
+		StreamOutputStateManager,
+		BlendingStateManager,
+		BlendSampleMaskStateManager,
+		RasterizerStateManager,
+		DepthStencilStateManager,
+		InputLayoutStateManager,
+		IndexBufferStripStateManager,
+		PrimitiveTopologyStateManager,
+		RenderTargetFormatsStateManager,
+		DepthStencilFormatStateManager,
+		MultisamplingStateManager,
+		NodeMaskStateManager,
+		RootSignatureStateManager
+	> {
+	protected:
+		gObj<ComputeBinder> OnCollectBindings() override {
+			gObj<ComputeBinder> binder = new GraphicsBinder();
+			Bindings(binder.Dynamic_Cast<GraphicsBinder>());
+			return binder;
+		}
+
+		virtual void Bindings(gObj<GraphicsBinder> binder) { }
+	};
+
+	// Used to show complexity
+	class ShowComplexityPipeline : public GraphicsPipeline {
+	public:
+		// UAV to output the complexity
+		gObj<Texture2D> Complexity;
+
+		// Render Target
+		gObj<Texture2D> RenderTarget;
+
+	protected:
+		void Setup() {
+			set->VertexShader(ShaderLoader::FromMemory(cso_DrawScreen_VS));
+			set->PixelShader(ShaderLoader::FromMemory(cso_DrawComplexity_PS));
+			set->InputLayout({
+					VertexElement(VertexElementType::Float, 2, VertexElementSemantic::Position)
+				});
+		}
+
+		void Bindings(gObj<GraphicsBinder> binder)
+		{
+			binder->Bindings_OnSet();
+			binder->Bindings_PixelShader();
+			binder->RTV(0, RenderTarget);
+			binder->SRV(0, Complexity);
+		}
+	};
+
+#pragma endregion
 
 #pragma endregion
 
@@ -13666,6 +14602,7 @@ namespace dx4xb {
 	class CommandListManager {
 		friend wScheduler;
 		Tagging __Tag; // Allows the scheduler to 'plant' a value for async processes to access to it.
+	protected:
 		wCmdList* w_cmdList;
 	public:
 		virtual ~CommandListManager() { }
@@ -13961,29 +14898,337 @@ namespace dx4xb {
 
 	class DeviceManager {
 		friend Presenter;
+		friend Technique;
 
 		wDevice* device = nullptr;
+
+		wResource* CreateResource(
+			const D3D12_RESOURCE_DESC& desc,
+			int elementStride,
+			int elementCount,
+			D3D12_RESOURCE_STATES initialState,
+			D3D12_CLEAR_VALUE* clearing,
+			CPUAccessibility accessibility
+		);
+
+		template<typename T>
+		gObj<T> CreateResourceView(const D3D12_RESOURCE_DESC& desc,
+			int elementStride,
+			int elementCount,
+			D3D12_RESOURCE_STATES initialState,
+			D3D12_CLEAR_VALUE* clearing = nullptr,
+			CPUAccessibility accessibility = CPUAccessibility::None)
+		{
+			wResource* resource = CreateResource(desc, elementStride, elementCount, initialState, clearing, accessibility);
+
+			return new T(device, resource, nullptr);
+		}
+
+		int MaxMipsFor(int dimension) {
+			int mips = 0;
+			while (dimension > 0)
+			{
+				mips++;
+				dimension >>= 1;
+			}
+			return mips;
+		}
+
+		void FillTexture3DDescription(DXGI_FORMAT format, D3D12_RESOURCE_DESC& desc, long width, int height, int slices, int mips, D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE) {
+			if (mips == 0) // compute maximum possible value
+				mips = 100000;
+
+			desc.Width = width;
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE3D;
+			desc.Flags = flag;
+			desc.Format = format;
+			desc.Height = height;
+			desc.Alignment = 0;
+			desc.DepthOrArraySize = slices;
+			desc.MipLevels = min(mips, MaxMipsFor(min(min(width, height), slices)));
+			desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+			desc.SampleDesc = { 1, 0 };
+		}
+
+		void FillTexture2DDescription(DXGI_FORMAT format, D3D12_RESOURCE_DESC& desc, long width, int height, int mips, int arrayLength, D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE) {
+			if (mips == 0) // compute maximum possible value
+				mips = 100000;
+
+			desc.Width = width;
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+			desc.Flags = flag;
+			desc.Format = format;
+			desc.Height = height;
+			desc.Alignment = 0;
+			desc.DepthOrArraySize = arrayLength;
+			desc.MipLevels = min(mips, MaxMipsFor(min(width, height)));
+			desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+			desc.SampleDesc = { 1, 0 };
+		}
+
+		void FillTexture1DDescription(DXGI_FORMAT format, D3D12_RESOURCE_DESC& desc, long width, int mips, int arrayLength, D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE) {
+			if (mips == 0) // compute maximum possible value
+				mips = 100000;
+			desc.Width = width;
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE1D;
+			desc.Flags = flag;
+			desc.Format = format;
+			desc.Height = 1;
+			desc.Alignment = 0;
+			desc.DepthOrArraySize = arrayLength;
+			desc.MipLevels = min(mips, MaxMipsFor(width));
+			desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+			desc.SampleDesc = { 1, 0 };
+		}
+
+		void FillBufferDescription(D3D12_RESOURCE_DESC& desc, long width, D3D12_RESOURCE_FLAGS flag = D3D12_RESOURCE_FLAG_NONE) {
+			desc.Width = width;
+			desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			desc.Flags = flag;
+			desc.Format = DXGI_FORMAT_UNKNOWN;
+			desc.Height = 1;
+			desc.Alignment = 0;
+			desc.DepthOrArraySize = 1;
+			desc.MipLevels = 1;
+			desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			desc.SampleDesc = { 1, 0 };
+		}
+
 	protected:
 
 		DeviceManager() {}
 
 	public:
+
+		gObj<Texture2D> CurrentRenderTarget();
 		
+		/// <summary>
+		/// Used to load techniques or pipelines. This method associates the current object to the device manager used by their parent.
+		/// </summary>
 		template<typename T, typename ...A>
-		inline void Load(gObj<T>& technique, A... args) {
-			technique = new T(args...);
-			technique->device = device;
-			technique->OnLoad();
+		inline void Load(gObj<T>& obj, A... args) {
+			obj = new T(args...);
+			obj->OnCreate(device);
+		}
+
+#pragma region Creating
+
+		// Creates a buffer to be used as a constant buffer in a shader.
+		// Dynamic buffers are created in a upload heap so, they can be written directly from the cpu.
+		gObj<Buffer> Create_Buffer_CB(int elementStride, bool dynamic = false);
+		// Creates a buffer to be used as a constant buffer in a shader.
+		// Dynamic buffers are created in a upload heap so, they can be written directly from the cpu.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_CB(bool dynamic = false) {
+			return Create_Buffer_CB(sizeof(T), dynamic);
+		}
+
+		// Creates a buffer to store modifiable acceleration datastructure geometry and instance buffers.
+		gObj<Buffer> Create_Buffer_ADS(int elementStride, int count);
+		// Creates a buffer to store modifiable acceleration datastructure geometry and instance buffers.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_ADS(int count = 1) {
+			return Create_Buffer_ADS(sizeof(T), count);
+		}
+
+		// Creates a buffer to be used as a StructuredBuffer in a shader.
+		gObj<Buffer> Create_Buffer_SRV(int elementStride, int count);
+		// Creates a buffer to be used as a StructuredBuffer in a shader.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_SRV(int count = 1) {
+			return Create_Buffer_SRV(sizeof(T), count);
+		}
+
+		// Creates a buffer to be binded as a vertex buffer.
+		gObj<Buffer> Create_Buffer_VB(int elementStride, int count);
+		// Creates a buffer to be binded as a vertex buffer.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_VB(int count) {
+			return Create_Buffer_VB(sizeof(T), count);
+		}
+
+		// Creates a buffer to be binded as an index buffer.
+		gObj<Buffer> Create_Buffer_IB(int elementStride, int count);
+		// Creates a buffer to be binded as an index buffer.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_IB(int count) {
+			throw Exception::FromError(Errors::UnsupportedFormat, "Error in type");
+		}
+		// Creates a buffer to be binded as an index buffer.
+		template <>
+		gObj<Buffer> Create_Buffer_IB<int>(int count) {
+			return Create_Buffer_IB(4, count);
+		}
+		// Creates a buffer to be binded as an index buffer.
+		template <>
+		gObj<Buffer> Create_Buffer_IB<unsigned int>(int count) {
+			return Create_Buffer_IB(4, count);
+		}
+		// Creates a buffer to be binded as an index buffer.
+		template <>
+		gObj<Buffer> Create_Buffer_IB<short>(int count) {
+			return Create_Buffer_IB(2, count);
+		}
+		// Creates a buffer to be binded as an index buffer.
+		template <>
+		gObj<Buffer> Create_Buffer_IB<unsigned short>(int count) {
+			return Create_Buffer_IB(2, count);
+		}
+
+		// Creates a buffer to be used as a RWStructuredBuffer in a shader.
+		gObj<Buffer> Create_Buffer_UAV(int elementStride, int count);
+		// Creates a buffer to be used as a RWStructuredBuffer in a shader.
+		template <typename T>
+		gObj<Buffer> Create_Buffer_UAV(int count = 1) {
+			return Create_Buffer_UAV(sizeof(T), count);
+		}
+
+		// Creates a onedimensional texture to be used as a Texture1D in a shader.
+		gObj<Texture1D> Create_Texture1D_SRV(DXGI_FORMAT format, int width, int mips = 1, int arrayLength = 1);
+		// Creates a onedimensional texture to be used as a Texture1D in a shader.
+		template<typename T>
+		gObj<Texture1D> Create_Texture1D_SRV(int width, int mips = 1, int arrayLength = 1) {
+			return Create_Texture1D_SRV(Formats<T>::format, width, mips, arrayLength);
+		}
+
+		// Creates a onedimensional texture to be used as a RWTexture1D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		gObj<Texture1D> Create_Texture1D_UAV(DXGI_FORMAT format, int width, int mips = 0, int arrayLength = 1);
+		// Creates a onedimensional texture to be used as a RWTexture1D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		template<typename T>
+		gObj<Texture1D> Create_Texture1D_UAV(int width, int mips = 0, int arrayLength = 1) {
+			return Create_Texture1D_UAV(Formats<T>::Value, width, mips, arrayLength);
+		}
+
+		// Creates a bidimensional texture to be used as a Texture2D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		gObj<Texture2D> Create_Texture2D_SRV(DXGI_FORMAT format, int width, int height, int mips = 0, int arrayLength = 1);
+		// Creates a bidimensional texture to be used as a Texture2D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		template<typename T>
+		gObj<Texture2D> Create_Texture2D_SRV(int width, int height, int mips = 0, int arrayLength = 1) {
+			return Create_Texture2D_SRV(Formats<T>::Value, width, height, mips, arrayLength);
+		}
+		/// <summary>
+		/// Loads the content of a file into a texture2D.
+		/// </summary>
+		gObj<Texture2D> Create_Texture2D_SRV(dx4xb::string filePath);
+
+		/// <summary>
+		///	Saves the content of a texture to a file.
+		/// </summary>
+		void Create_File(dx4xb::string filePath, gObj<Texture2D> texture);
+
+		// Creates a bidimensional texture to be used as a RWTexture2D in a shader or a render target.
+		// if mips == 0 all possible mips are allocated.
+		gObj<Texture2D> Create_Texture2D_UAV(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
+		// Creates a bidimensional texture to be used as a RWTexture2D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		template<typename T>
+		gObj<Texture2D> Create_Texture2D_UAV(int width, int height, int mips = 0, int arrayLength = 1) {
+			return Create_Texture2D_UAV(Formats<T>::Value, width, height, mips, arrayLength);
+		}
+
+		// Creates a bidimensional texture to be used exclusively as a render target.
+		// if mips == 0 all possible mips are allocated.
+		gObj<Texture2D> Create_Texture2D_RT(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
+		// Creates a bidimensional texture to be used exclusively as a render target.
+		// if mips == 0 all possible mips are allocated.
+		template<typename T>
+		gObj<Texture2D> Create_Texture2D_RT(int width, int height, int mips = 1, int arrayLength = 1) {
+			return Create_Texture2D_RT(Formats<T>::Value, width, height, mips, arrayLength);
+		}
+
+		// Creates a bidimensional texture to be used as exclusively as DepthStencil Buffer.
+		gObj<Texture2D> Create_Texture2D_DSV(int width, int height, DXGI_FORMAT format = DXGI_FORMAT_D32_FLOAT);
+
+		// Creates a threedimensional texture to be used as a Texture3D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		gObj<Texture3D> Create_Texture3D_SRV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
+		// Creates a threedimensional texture to be used as a Texture3D in a shader.
+		// if mips == 0 all possible mips are allocated.
+		template<typename T>
+		gObj<Texture3D> Create_Texture3D_SRV(int width, int height, int depth, int mips = 1) {
+			return Create_Texture3D_SRV(Formats<T>::Value, width, height, depth, mips);
+		}
+
+		// Creates a threedimensional texture to be used as a RWTexture3D in a shader.
+		gObj<Texture3D> Create_Texture3D_UAV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
+		// Creates a threedimensional texture to be used as a RWTexture3D in a shader.
+		template<typename T>
+		gObj<Texture3D> Create_Texture3D_UAV(int width, int height, int depth, int mips = 1) {
+			return Create_Texture3D_UAV(Formats<T>::Value, width, height, depth, mips);
+		}
+
+#pragma endregion
+
+#pragma region Dispatching
+
+		template<typename T>
+		inline void Dispatch_Technique(gObj<T> technique) {
+			technique->OnDispatch();
+		}
+
+		void Dispatch_Process(gObj<GPUProcess> process);
+
+		void Dispatch_Process_Async(gObj<GPUProcess> process);
+
+		template<typename T>
+		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
+			Dispatch_Process(new MethodAsGPUProcess<T, CopyManager>(instance, member));
 		}
 
 		template<typename T>
-		inline void Dispatch(gObj<T> technique) {
-			technique->OnDispatch();
+		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
+			Dispatch_Process(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
 		}
+
+		template<typename T>
+		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
+			Dispatch_Process(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
+		}
+
+		template<typename T>
+		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
+			Dispatch_Process(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
+		}
+
+		template<typename T>
+		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
+			Dispatch_Process_Async(new MethodAsGPUProcess<T, CopyManager>(instance, member));
+		}
+
+		template<typename T>
+		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
+			Dispatch_Process_Async(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
+		}
+
+		template<typename T>
+		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
+			Dispatch_Process_Async(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
+		}
+
+		template<typename T>
+		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
+			Dispatch_Process_Async(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
+		}
+	
+#pragma endregion
+	
+#pragma region Sync
+
+		Signal Flush(EngineMask mask = EngineMask::All);
+
+#pragma endregion
+
 	};
 
 	class Technique : protected DeviceManager {
 		friend DeviceManager;
+
+		void OnCreate(wDevice* w_device);
+
 	protected:
 		virtual void OnLoad() = 0;
 

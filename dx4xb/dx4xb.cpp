@@ -250,7 +250,7 @@ namespace dx4xb {
 
 #pragma endregion
 
-	#pragma region Scheduler
+#pragma region Scheduler
 
 	wScheduler::wScheduler(wDevice* w_device, int frames, int threads)
 	{
@@ -496,7 +496,658 @@ namespace dx4xb {
 		((wScheduler*)this->scheduler)->WaitFor(*this);
 	}
 
-	#pragma endregion
+#pragma endregion
+
+#pragma region Pipelines
+
+	D3D12_SHADER_BYTECODE ShaderLoader::FromFile(const char* bytecodeFilePath) {
+		D3D12_SHADER_BYTECODE code;
+		FILE* file;
+		if (fopen_s(&file, bytecodeFilePath, "rb") != 0)
+		{
+			throw Exception::FromError(Errors::ShaderNotFound);
+		}
+		fseek(file, 0, SEEK_END);
+		long long count;
+		count = ftell(file);
+		fseek(file, 0, SEEK_SET);
+
+		byte* bytecode = new byte[count];
+		int offset = 0;
+		while (offset < count) {
+			offset += fread_s(&bytecode[offset], min(1024, count - offset), sizeof(byte), 1024, file);
+		}
+		fclose(file);
+
+		code.BytecodeLength = count;
+		code.pShaderBytecode = (void*)bytecode;
+		return code;
+	}
+
+	D3D12_SHADER_BYTECODE ShaderLoader::FromMemory(const byte* bytecodeData, int count) {
+		D3D12_SHADER_BYTECODE code;
+		code.BytecodeLength = count;
+		code.pShaderBytecode = (void*)bytecodeData;
+		return code;
+	}
+
+
+	// Represents a binding of a resource (or resource array) to a shader slot.
+	struct SlotBinding {
+		// Gets or sets the root parameter bound
+		D3D12_ROOT_PARAMETER Root_Parameter;
+
+		union {
+			struct ConstantData {
+				// Gets the pointer to a constant buffer in memory.
+				void* ptrToConstant;
+			} ConstantData;
+			struct DescriptorData
+			{
+				// Determines the dimension of the bound resource
+				D3D12_RESOURCE_DIMENSION Dimension;
+				// Gets the pointer to a resource field (pointer to ResourceView)
+				// or to the array of resources
+				void* ptrToResourceViewArray;
+				// Gets the pointer to the number of resources in array
+				int* ptrToCount;
+			} DescriptorData;
+			struct SceneData {
+				void* ptrToScene;
+			} SceneData;
+		};
+	};
+
+	struct wBindings
+	{
+		// Used to collect all constant, shader, unordered views or sampler bindings
+		list<SlotBinding> bindings;
+
+		// Used to collect all render targets bindings
+		gObj<Texture2D>* RenderTargets[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT];
+		// Used to collect all render targets bindings
+		D3D12_CPU_DESCRIPTOR_HANDLE RenderTargetDescriptors[D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT];
+		// Gets or sets the maxim slot of bound render target
+		int RenderTargetMax = 0;
+		// Gets the bound depth buffer resource
+		gObj<Texture2D>* DepthBufferField = nullptr;
+
+		// Used to collect static samplers
+		D3D12_STATIC_SAMPLER_DESC Static_Samplers[32];
+		// Gets or sets the maxim sampler slot used
+		int StaticSamplerMax = 0;
+
+		Engine EngineType;
+
+		// Table with all descriptor ranges bound by this pipeline bindings object.
+		// This array must be on the CPU during bindings.
+		table<D3D12_DESCRIPTOR_RANGE> ranges = table<D3D12_DESCRIPTOR_RANGE>(200);
+
+		int globalBindings = 0;
+
+		void AddBinding(bool collectingGlobal, const SlotBinding& binding) {
+			if (collectingGlobal) {
+				bindings.push(binding);
+				globalBindings++;
+			}
+			else
+			{
+				bindings.add(binding);
+			}
+		}
+
+		void BindToGPU(bool global, wDevice* dxwrapper, wCmdList* cmdWrapper) {
+			auto device = dxwrapper->device;
+			auto cmdList = cmdWrapper->cmdList;
+
+			int startRootParameter = global ? 0 : globalBindings;
+			int endRootParameter = global ? globalBindings : bindings.size();
+
+			if (global /*Only for global bindings*/)
+			{
+#pragma region Bind Render Targets and DepthBuffer if any
+				if (EngineType == Engine::Direct)
+				{
+					for (int i = 0; i < RenderTargetMax; i++)
+						if (!(*RenderTargets[i]))
+							RenderTargetDescriptors[i] =  dxwrapper->ResolveNullRTVDescriptor();
+						else
+						{
+							wResource* iresource = (*RenderTargets[i])->w_resource;
+							wResourceView* vresource = (*RenderTargets[i])->w_view;
+							iresource->AddBarrier(cmdList, D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+							RenderTargetDescriptors[i] = vresource->getRTVHandle();
+						}
+
+					D3D12_CPU_DESCRIPTOR_HANDLE depthHandle;
+					if (!(DepthBufferField == nullptr || !(*DepthBufferField)))
+					{
+						wResourceView* vresource = (*DepthBufferField)->w_view;
+						depthHandle = vresource->getDSVHandle();
+					}
+
+					cmdList->OMSetRenderTargets(RenderTargetMax, RenderTargetDescriptors, FALSE, (DepthBufferField == nullptr || !(*DepthBufferField)) ? nullptr : &depthHandle);
+				}
+				ID3D12DescriptorHeap* heaps[] = { dxwrapper->gpu_csu->getInnerHeap(), dxwrapper->gpu_smp->getInnerHeap() };
+				cmdList->SetDescriptorHeaps(2, heaps);
+#pragma endregion
+			}
+
+			// Foreach bound slot
+			for (int i = startRootParameter; i < endRootParameter; i++)
+			{
+				SlotBinding binding = bindings[i];
+
+				switch (binding.Root_Parameter.ParameterType)
+				{
+				case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS:
+					switch (this->EngineType) {
+					case Engine::Compute:
+						cmdList->SetComputeRoot32BitConstants(i, binding.Root_Parameter.Constants.Num32BitValues,
+							binding.ConstantData.ptrToConstant, 0);
+						break;
+					case Engine::Direct:
+						cmdList->SetGraphicsRoot32BitConstants(i, binding.Root_Parameter.Constants.Num32BitValues,
+							binding.ConstantData.ptrToConstant, 0);
+						break;
+					}
+					break;
+				case D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE:
+				{
+#pragma region DESCRIPTOR TABLE
+					// Gets the range length (if bound an array) or 1 if single.
+					int count = binding.DescriptorData.ptrToCount == nullptr ? 1 : *binding.DescriptorData.ptrToCount;
+
+					// Gets the bound resource if single
+					gObj<ResourceView> resource = binding.DescriptorData.ptrToCount == nullptr ? *((gObj<ResourceView>*)binding.DescriptorData.ptrToResourceViewArray) : nullptr;
+
+					// Gets the bound resources if array or treat the resource as a single array case
+					gObj<ResourceView>* resourceArray = binding.DescriptorData.ptrToCount == nullptr ? &resource
+						: *((gObj<ResourceView>**)binding.DescriptorData.ptrToResourceViewArray);
+
+					// foreach resource in bound array (or single resource treated as array)
+					for (int j = 0; j < count; j++)
+					{
+						// reference to the j-th resource (or bind null if array is null)
+						gObj<ResourceView> resource = resourceArray == nullptr ? nullptr : *(resourceArray + j);
+
+						if (!resource)
+							// Grant a resource view to create null descriptor if missing resource.
+							resource = dxwrapper->ResolveNullView(dxwrapper, binding.DescriptorData.Dimension);
+						else
+						{
+							switch (binding.Root_Parameter.DescriptorTable.pDescriptorRanges[0].RangeType)
+							{
+							case D3D12_DESCRIPTOR_RANGE_TYPE_SRV:
+							{
+								D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
+								switch (this->EngineType)
+								{
+								case Engine::Compute:
+									state |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+									break;
+								case Engine::Direct:
+									state |= D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+									break;
+								}
+
+								wResource* iresource = resource->w_resource;
+								iresource->AddBarrier(cmdList, state);
+							}
+							break;
+							case D3D12_DESCRIPTOR_RANGE_TYPE_UAV:
+								wResource* iresource = resource->w_resource;
+								iresource->AddBarrier(cmdList, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+								break;
+							}
+						}
+						// Gets the cpu handle at not visible descriptor heap for the resource
+						wResourceView* vresource = resource->w_view;
+						D3D12_CPU_DESCRIPTOR_HANDLE handle = vresource->GetCPUHandleFor(binding.Root_Parameter.DescriptorTable.pDescriptorRanges[0].RangeType);
+
+						// Adds the handle of the created descriptor into the src list.
+						cmdWrapper->srcDescriptors.add(handle);
+					}
+					// add the descriptors range length
+					cmdWrapper->dstDescriptorRangeLengths.add(count);
+					int startIndex = dxwrapper->gpu_csu->AllocateInFrame(count);
+					cmdWrapper->dstDescriptors.add(dxwrapper->gpu_csu->getCPUVersion(startIndex));
+
+					switch (this->EngineType) {
+					case Engine::Compute:
+						cmdList->SetComputeRootDescriptorTable(i, dxwrapper->gpu_csu->getGPUVersion(startIndex));
+						break;
+					case Engine::Direct:
+						cmdList->SetGraphicsRootDescriptorTable(i, dxwrapper->gpu_csu->getGPUVersion(startIndex));
+						break;
+					}
+					break; // DESCRIPTOR TABLE
+#pragma endregion
+				}
+				case D3D12_ROOT_PARAMETER_TYPE_CBV:
+				{
+#pragma region DESCRIPTOR CBV
+					// Gets the range length (if bound an array) or 1 if single.
+					gObj<ResourceView> resource = *((gObj<ResourceView>*)binding.DescriptorData.ptrToResourceViewArray);
+					wResource* iresource = resource->w_resource;
+
+					switch (this->EngineType) {
+					case Engine::Compute:
+						cmdList->SetComputeRootConstantBufferView(i, iresource->resource->GetGPUVirtualAddress());
+						break;
+					case Engine::Direct:
+						cmdList->SetGraphicsRootConstantBufferView(i, iresource->resource->GetGPUVirtualAddress());
+						break;
+					}
+					break; // DESCRIPTOR CBV
+#pragma endregion
+				}
+				case D3D12_ROOT_PARAMETER_TYPE_SRV: // this type is used only for ADS
+				{
+					// Gets the range length (if bound an array) or 1 if single.
+					gObj<InstanceCollection> scene = *((gObj<InstanceCollection>*)binding.SceneData.ptrToScene);
+					if (scene->State() == CollectionState::NotBuilt)
+						throw Exception::FromError(Errors::Invalid_Operation, "Scene should be loaded on the GPU first.");
+
+					//TODO!!!
+					//cmdList->SetComputeRootShaderResourceView(i, scene->wrapper->gpuVersion->topLevelAccDS->GetGPUVirtualAddress());
+					break;
+				}
+				}
+			}
+		}
+	};
+
+	struct wPipelineState {
+		// Gets or sets the binder.
+		gObj<ComputeBinder> binder = nullptr;
+		// DX12 wrapper.
+		wDevice* wrapper = nullptr;
+		// Gets or sets the root signature for this bindings
+		DX_RootSignature rootSignature = nullptr;
+		// Gets or sets the size of the root signature.
+		int rootSignatureSize;
+		// Gets or sets the pipeline object built for the pipeline
+		DX_PipelineState pso = nullptr;
+	};
+
+#pragma region Binding Methods
+
+	void ComputeBinder::CreateSignature(
+		DX_Device device,
+		D3D12_ROOT_SIGNATURE_FLAGS flags,
+		DX_RootSignature& rootSignature,
+		int& rootSignatureSize
+	)
+	{
+		auto bindings = this->__InternalBindingObject->bindings;
+
+		D3D12_ROOT_PARAMETER* parameters = new D3D12_ROOT_PARAMETER[bindings.size()];
+
+		rootSignatureSize = 0;
+		for (int i = 0; i < bindings.size(); i++)
+		{
+			parameters[i] = bindings[i].Root_Parameter;
+
+			switch (bindings[i].Root_Parameter.ParameterType) {
+			case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS:
+				rootSignatureSize += bindings[i].Root_Parameter.Constants.Num32BitValues * 4;
+				break;
+			default:
+				rootSignatureSize += 4 * 4;
+				break;
+			}
+		}
+
+		D3D12_ROOT_SIGNATURE_DESC desc;
+		desc.pParameters = parameters;
+		desc.NumParameters = bindings.size();
+		desc.pStaticSamplers = __InternalBindingObject->Static_Samplers;
+		desc.NumStaticSamplers = __InternalBindingObject->StaticSamplerMax;
+		desc.Flags = flags;
+
+		ID3DBlob* signatureBlob;
+		ID3DBlob* signatureErrorBlob;
+
+		D3D12_VERSIONED_ROOT_SIGNATURE_DESC d = {};
+		d.Desc_1_0 = desc;
+		d.Version = D3D_ROOT_SIGNATURE_VERSION_1_0;
+
+		auto hr = D3D12SerializeVersionedRootSignature(&d, &signatureBlob, &signatureErrorBlob);
+
+		if (hr != S_OK)
+		{
+			throw Exception::FromError(Errors::BadSignatureConstruction, "Error serializing root signature");
+		}
+
+		hr = device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature));
+
+		if (hr != S_OK)
+		{
+			throw Exception::FromError(Errors::BadSignatureConstruction, "Error creating root signature");
+		}
+
+		delete[] parameters;
+	}
+
+	ComputeBinder::ComputeBinder() {
+		__InternalBindingObject = new wBindings();
+		__InternalBindingObject->EngineType = Engine::Compute;
+	}
+
+	GraphicsBinder::GraphicsBinder() : ComputeBinder() {
+		__InternalBindingObject->EngineType = Engine::Direct;
+	}
+
+	RaytracingBinder::RaytracingBinder() : ComputeBinder() {
+		__InternalBindingObject->EngineType = Engine::Compute;
+	}
+
+	bool ComputeBinder::HasSomeBindings() {
+		return
+			__InternalBindingObject->bindings.size() > 0 ||
+			__InternalBindingObject->StaticSamplerMax > 0;
+	}
+
+	void ComputeBinder::AddConstant(int slot, void* data, int size)
+	{
+		D3D12_ROOT_PARAMETER p = { };
+		p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+		p.Constants.Num32BitValues = size;
+		p.Constants.RegisterSpace = space;
+		p.Constants.ShaderRegister = slot;
+		p.ShaderVisibility = visibility;
+
+		SlotBinding b{  };
+		b.Root_Parameter = p;
+		b.ConstantData.ptrToConstant = data;
+		__InternalBindingObject->AddBinding(collectGlobal, b);
+	}
+
+	void ComputeBinder::AddDescriptorRange(int slot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resource)
+	{
+		D3D12_ROOT_PARAMETER p = { };
+		p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		p.DescriptorTable.NumDescriptorRanges = 1;
+		p.ShaderVisibility = visibility;
+
+		D3D12_DESCRIPTOR_RANGE range = { };
+		range.BaseShaderRegister = slot;
+		range.NumDescriptors = 1;
+		range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.RangeType = type;
+		range.RegisterSpace = space;
+
+		__InternalBindingObject->ranges.add(range);
+		p.DescriptorTable.pDescriptorRanges = &__InternalBindingObject->ranges.last();
+
+		SlotBinding b{  };
+		b.Root_Parameter = p;
+		b.DescriptorData.Dimension = dimension;
+		b.DescriptorData.ptrToResourceViewArray = resource;
+		__InternalBindingObject->AddBinding(collectGlobal, b);
+	}
+
+	void ComputeBinder::AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count)
+	{
+		D3D12_ROOT_PARAMETER p = { };
+		p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		p.DescriptorTable.NumDescriptorRanges = 1;
+		p.ShaderVisibility = visibility;
+		D3D12_DESCRIPTOR_RANGE range = { };
+		range.BaseShaderRegister = initialSlot;
+		range.NumDescriptors = -1;// undefined this moment
+		range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.RangeType = type;
+		range.RegisterSpace = space;
+
+		__InternalBindingObject->ranges.add(range);
+		p.DescriptorTable.pDescriptorRanges = &__InternalBindingObject->ranges.last();
+
+		SlotBinding b{ };
+		b.Root_Parameter = p;
+		b.DescriptorData.Dimension = dimension;
+		b.DescriptorData.ptrToResourceViewArray = resourceArray;
+		b.DescriptorData.ptrToCount = count;
+		__InternalBindingObject->AddBinding(collectGlobal, b);
+	}
+
+	void ComputeBinder::AddStaticSampler(int slot, const Sampler& sampler)
+	{
+		D3D12_STATIC_SAMPLER_DESC desc = { };
+		desc.AddressU = sampler.AddressU;
+		desc.AddressV = sampler.AddressV;
+		desc.AddressW = sampler.AddressW;
+		desc.BorderColor =
+			!any(sampler.BorderColor - float4(0, 0, 0, 0)) ?
+			D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK :
+			!any(sampler.BorderColor - float4(0, 0, 0, 1)) ?
+			D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK :
+			D3D12_STATIC_BORDER_COLOR_OPAQUE_WHITE;
+		desc.ComparisonFunc = sampler.ComparisonFunc;
+		desc.Filter = sampler.Filter;
+		desc.MaxAnisotropy = sampler.MaxAnisotropy;
+		desc.MaxLOD = sampler.MaxLOD;
+		desc.MinLOD = sampler.MinLOD;
+		desc.MipLODBias = sampler.MipLODBias;
+		desc.RegisterSpace = space;
+		desc.ShaderRegister = slot;
+		desc.ShaderVisibility = visibility;
+
+		__InternalBindingObject->Static_Samplers[__InternalBindingObject->StaticSamplerMax] = desc;
+		__InternalBindingObject->StaticSamplerMax++;
+	}
+
+	void GraphicsBinder::SetRenderTarget(int slot, gObj<Texture2D>& const resource)
+	{
+		__InternalBindingObject->RenderTargets[slot] = &resource;
+		__InternalBindingObject->RenderTargetMax = max(__InternalBindingObject->RenderTargetMax, slot + 1);
+	}
+
+	void GraphicsBinder::SetDSV(gObj<Texture2D>& const resource)
+	{
+		__InternalBindingObject->DepthBufferField = &resource;
+	}
+
+#pragma endregion
+
+	void dx4xb::StaticPipelineBase::OnCreate(wDevice* w_device)
+	{
+		// Call setup to set all states of the setting object.
+		Setup();
+
+		// When a pipeline is loaded it should collect all bindings for global and local events.
+		wPipelineState* wrapper = new wPipelineState();
+		this->w_pipeline = wrapper;
+		wrapper->wrapper = w_device;
+		wrapper->binder = this->OnCollectBindings();
+		wBindings* bindings = wrapper->binder->__InternalBindingObject;
+
+		// Create the root signature for both groups together
+		wrapper->binder->CreateSignature(
+			w_device->device,
+			getRootFlags(),
+			wrapper->rootSignature,
+			wrapper->rootSignatureSize
+		);
+
+		// Create the pipeline state object
+#pragma region Create Pipeline State Object
+
+		CompleteStateObject(wrapper->rootSignature);
+
+		const D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = { (SIZE_T)getSettingObjectSize(), getSettingObject() };
+		auto hr = w_device->device->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&wrapper->pso));
+		if (FAILED(hr)) {
+			auto _hr = w_device->device->GetDeviceRemovedReason();
+			throw Exception::FromError(Errors::BadPSOConstruction, nullptr, hr);
+		}
+
+#pragma endregion
+	}
+
+	void dx4xb::StaticPipelineBase::OnSet(wCmdList* w_cmdList)
+	{
+		// Set the pipeline state object into the cmdList
+		wPipelineState* wrapper = this->w_pipeline;
+		// Set pipeline state object
+		w_cmdList->cmdList->SetPipelineState(wrapper->pso);
+		// Set root signature
+		if (this->GetEngine() == Engine::Compute)
+			w_cmdList->cmdList->SetComputeRootSignature(wrapper->rootSignature);
+		else
+			w_cmdList->cmdList->SetGraphicsRootSignature(wrapper->rootSignature);
+		// Bind global resources on the root signature
+		gObj<ComputeBinder> binder = w_pipeline->binder;
+		binder->__InternalBindingObject->BindToGPU(true, wrapper->wrapper, w_cmdList);
+	}
+
+	void dx4xb::StaticPipelineBase::OnDispatch(wCmdList* w_cmdList)
+	{
+		gObj<ComputeBinder> binder = w_pipeline->binder;
+		binder->__InternalBindingObject->BindToGPU(false, w_pipeline->wrapper, w_cmdList);
+	}
+
+#pragma endregion
+
+#pragma region RTX support
+
+	CollectionState dx4xb::InstanceCollection::State()
+	{
+		throw Exception::FromError(Errors::Unsupported_Fallback);
+	}
+
+#pragma endregion
+
+#pragma region Command List Management
+
+	void dx4xb::GraphicsManager::Clear_RT(gObj<Texture2D> rt, const FLOAT values[4])
+	{
+		auto cmdList = this->w_cmdList->cmdList;
+		wResource* resourceWrapper = rt->w_resource;
+		wResourceView* view = rt->w_view;
+		resourceWrapper->AddBarrier(cmdList, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		cmdList->ClearRenderTargetView(view->getRTVHandle(), values, 0, nullptr);
+	}
+
+	void dx4xb::CopyManager::Load_AllToGPU(gObj<ResourceView> resource)
+	{
+		resource->w_resource->UpdateResourceFromMapped(this->w_cmdList->cmdList, resource->w_view);
+	}
+
+	void dx4xb::CopyManager::Load_AllFromGPU(gObj<ResourceView> resource)
+	{
+		resource->w_resource->AddBarrier(this->w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		resource->w_resource->UpdateMappedFromResource(this->w_cmdList->cmdList, resource->w_view);
+	}
+
+	void dx4xb::CopyManager::Load_RegionToGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
+	{
+		singleSubresource->w_resource->UpdateRegionFromUploading(w_cmdList->cmdList,
+			singleSubresource->w_view, region);
+	}
+
+	void dx4xb::CopyManager::Load_RegionFromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
+	{
+		singleSubresource->w_resource->UpdateRegionToDownloading(w_cmdList->cmdList,
+			singleSubresource->w_view, region);
+	}
+	
+	void dx4xb::CopyManager::Copy_Resource(gObj<Texture2D> dst, gObj<Texture2D> src)
+	{
+		dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		src->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+		w_cmdList->cmdList->CopyResource(
+			dst->w_resource->resource,
+			src->w_resource->resource);
+	}
+
+	void dx4xb::ComputeManager::Set_Pipeline(gObj<Pipeline> pipeline)
+	{
+		w_cmdList->currentPipeline = pipeline;
+		pipeline->OnSet(w_cmdList);
+	}
+
+	void dx4xb::ComputeManager::Dispatch_Threads(int dimx, int dimy, int dimz)
+	{
+		if (!w_cmdList->currentPipeline) {
+			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
+		}
+		w_cmdList->currentPipeline->OnDispatch(w_cmdList);
+		w_cmdList->cmdList->Dispatch(dimx, dimy, dimz);
+
+		// Grant a barrier for all UAVs used
+		D3D12_RESOURCE_BARRIER b = { };
+		b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		b.UAV.pResource = nullptr;
+		w_cmdList->cmdList->ResourceBarrier(1, &b);
+	}
+
+	void dx4xb::GraphicsManager::Set_Viewport(float width, float height, float maxDepth, float x, float y, float minDepth)
+	{
+		D3D12_VIEWPORT viewport;
+		viewport.Width = width;
+		viewport.Height = height;
+		viewport.MinDepth = minDepth;
+		viewport.MaxDepth = maxDepth;
+		viewport.TopLeftX = x;
+		viewport.TopLeftY = y;
+		w_cmdList->cmdList->RSSetViewports(1, &viewport);
+
+		D3D12_RECT rect;
+		rect.left = (int)x;
+		rect.top = (int)y;
+		rect.right = (int)x + (int)width;
+		rect.bottom = (int)y + (int)height;
+		w_cmdList->cmdList->RSSetScissorRects(1, &rect);
+	}
+
+	void GraphicsManager::Set_VertexBuffer(gObj<Buffer> buffer, int slot)
+	{
+		buffer->w_resource->AddBarrier(w_cmdList->cmdList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+		D3D12_VERTEX_BUFFER_VIEW view;
+		buffer->w_view->CreateVBV(view);
+		w_cmdList->cmdList->IASetVertexBuffers(slot, 1, &view);
+		if (slot == 0) {
+			w_cmdList->vertexBufferSliceOffset = buffer->w_view->arrayStart;
+		}
+	}
+
+	void GraphicsManager::Set_IndexBuffer(gObj<Buffer> buffer)
+	{
+		buffer->w_resource->AddBarrier(w_cmdList->cmdList, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+		D3D12_INDEX_BUFFER_VIEW view;
+		buffer->w_view->CreateIBV(view);
+		w_cmdList->cmdList->IASetIndexBuffer(&view);
+		w_cmdList->indexBufferSliceOffset = buffer->w_view->arrayStart;
+	}
+
+	void GraphicsManager::Dispatch_IndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
+	{
+		if (!w_cmdList->currentPipeline) {
+			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
+		}
+
+		w_cmdList->currentPipeline->OnDispatch(w_cmdList);
+		w_cmdList->cmdList->IASetPrimitiveTopology(topology);
+		w_cmdList->cmdList->DrawIndexedInstanced(count, 1, start + w_cmdList->indexBufferSliceOffset, w_cmdList->vertexBufferSliceOffset, 0);
+	}
+
+	void GraphicsManager::Dispatch_Primitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
+	{
+		if (!w_cmdList->currentPipeline) {
+			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
+		}
+		w_cmdList->currentPipeline->OnDispatch(w_cmdList);
+		w_cmdList->cmdList->IASetPrimitiveTopology(topology);
+		w_cmdList->cmdList->DrawInstanced(count, 1, start + w_cmdList->vertexBufferSliceOffset, 0);
+	}
+
+#pragma endregion
 
 #pragma region Descriptor Manager
 
@@ -538,6 +1189,263 @@ namespace dx4xb {
 #pragma endregion
 
 #pragma region Resources
+
+	wResourceView* dx4xb::ResourceView::CreateDefaultView(
+		wResource* w_resource, 
+		wDevice* w_device)
+	{
+		wResourceView* result = new wResourceView(
+			w_device,
+			w_resource
+		);
+		auto desc = w_resource->desc;
+		result->arrayCount =
+			desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER ?
+			w_resource->pTotalSizes / w_resource->elementStride :
+			desc.DepthOrArraySize;
+		result->mipCount = desc.MipLevels;
+		result->ViewDimension = desc.Dimension;
+		result->elementStride = w_resource->elementStride;
+		return result;
+	}
+
+	dx4xb::ResourceView::ResourceView(wDevice* w_device, wResource* w_resource, wResourceView* w_view) :
+		w_resource(w_resource),
+		w_view(w_view ? w_view : CreateDefaultView(w_resource, w_device))
+	{
+		w_resource->references++;
+	}
+
+	dx4xb::ResourceView::~ResourceView()
+	{
+		this->w_resource->references--;
+		if (this->w_resource->references <= 0)
+			delete this->w_resource;
+		delete this->w_view;
+	}
+
+	byte* dx4xb::ResourceView::MappedElement(int col, int row, int depthOrArray, int mip)
+	{
+		switch (w_resource->desc.Dimension) {
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+		{
+			assert(row == 0 && "Row must be 0 in buffers");
+			assert(depthOrArray == 0 && "Slice must be 0 in buffers");
+			assert(mip == 0 && "Mip must be 0 in buffers");
+			return w_resource->permanentUploadingMap + col * w_resource->elementStride;
+		}
+		case D3D12_RESOURCE_DIMENSION_TEXTURE1D:
+		case D3D12_RESOURCE_DIMENSION_TEXTURE2D:
+		{
+			int index = (w_view->arrayStart + depthOrArray) * w_resource->desc.MipLevels + w_view->mipStart + mip;
+
+			auto footprint = w_resource->pLayouts[index];
+
+			assert((row == 0 || w_resource->desc.Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D) && "Row must be 0 in Texture1D");
+			return w_resource->permanentUploadingMap + footprint.Offset +
+				row * footprint.Footprint.RowPitch + col * w_resource->elementStride;
+		}
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+		{
+			int index = w_view->mipStart + mip;
+			auto footprint = w_resource->pLayouts[index];
+			return w_resource->permanentUploadingMap + footprint.Offset +
+				(depthOrArray * footprint.Footprint.Height + row) * footprint.Footprint.RowPitch +
+				col * w_resource->elementStride;
+		}
+		}
+	}
+
+	gObj<ResourceView> dx4xb::ResourceView::CreateNullView(wDevice* device, D3D12_RESOURCE_DIMENSION dimension)
+	{
+		D3D12_RESOURCE_DESC nullDesc = {
+		};
+		nullDesc.Dimension = dimension;
+		nullDesc.Format = DXGI_FORMAT_R8_SINT;
+		nullDesc.Width = 1;
+		nullDesc.Height = 1;
+		nullDesc.DepthOrArraySize = 1;
+		nullDesc.MipLevels = 1;
+		nullDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		wResource* nullresource = new wResource(device->device, nullptr, nullDesc, 1, 1, D3D12_RESOURCE_STATE_GENERIC_READ, CPUAccessibility::None);
+		wResourceView* nullview = new wResourceView(device, nullresource);
+		nullview->arrayCount = 0;
+		nullview->mipCount = 1;
+		nullview->elementStride = 1;
+		nullview->ViewDimension = dimension;
+		return new ResourceView(device, nullresource, nullview);
+	}
+
+	void dx4xb::ResourceView::SetDebugName(LPCWSTR name)
+	{
+		this->w_resource->resource->SetName(name);
+	}
+
+	CPUAccessibility dx4xb::ResourceView::getCPUAccessibility() const
+	{
+		return w_resource->cpuaccess;
+	}
+
+	long dx4xb::ResourceView::SizeInBytes(int subresource) const
+	{
+		auto fp = w_resource->pLayouts[subresource].Footprint;
+		return fp.Depth * fp.Height * fp.RowPitch;
+	}
+
+	int dx4xb::ResourceView::ElementStride() const
+	{
+		return w_view->elementStride;
+	}
+
+	int dx4xb::ResourceView::Subresources() const
+	{
+		return w_resource->subresources;
+	}
+
+	void dx4xb::ResourceView::Write(byte* data, bool flipRows)
+	{
+		w_resource->WriteToMapped(data, w_view, flipRows);
+	}
+
+	void dx4xb::ResourceView::Read(byte* data, bool flipRows)
+	{
+		w_resource->ReadFromMapped(data, w_view, flipRows);
+	}
+
+	void dx4xb::ResourceView::WriteRegion(byte* data, const D3D12_BOX& region, bool flipRows)
+	{
+		w_resource->WriteRegionToMappedSubresource(data, w_view, region, flipRows);
+	}
+
+	void dx4xb::ResourceView::ReadRegion(byte* data, const D3D12_BOX& region, bool flipRows)
+	{
+		w_resource->ReadRegionFromMappedSubresource(data, w_view, region, flipRows);
+	}
+
+	D3D12_GPU_VIRTUAL_ADDRESS Buffer::GPUVirtualAddress(int element) const
+	{
+		return w_resource->GetGPUVirtualAddress() + (element + w_view->arrayStart) * w_view->elementStride;
+	}
+
+	unsigned int dx4xb::Buffer::ElementCount() const
+	{
+		return w_view->arrayCount;
+	}
+
+	gObj<Buffer> Buffer::Slice(int start, int count) const {
+		return new Buffer(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(0, 0, start, count));
+	}
+
+	gObj<Texture1D> Texture1D::Slice_Mips(int start, int count) const {
+		return new Texture1D(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(start, count, 0, 0));
+	}
+
+	gObj<Texture1D> Texture1D::Slice_Array(int start, int count) const {
+		return new Texture1D(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(0, 0, start, count));
+	}
+
+	gObj<Texture2D> Texture2D::Slice_Mips(int start, int count) const {
+		return new Texture2D(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(start, count, 0, 0));
+	}
+
+	gObj<Texture2D> Texture2D::Slice_Array(int start, int count) const {
+		return new Texture2D(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(0, 0, start, count));
+	}
+
+	gObj<Texture3D> Texture3D::Slice_Mips(int start, int count) const {
+		return new Texture3D(
+			w_view->w_device,
+			w_resource,
+			w_view->createSlicedClone(start, count, 0, 0));
+	}
+
+	DXGI_FORMAT dx4xb::Texture1D::Format() const
+	{
+		return w_resource->desc.Format;
+	}
+
+	unsigned int dx4xb::Texture1D::Width() const
+	{
+		int index = w_view->arrayStart * w_resource->desc.MipLevels + w_view->mipStart;
+		return w_resource->pLayouts[index].Footprint.Width;
+	}
+	
+	unsigned int dx4xb::Texture1D::ArrayLength() const
+	{
+		return w_view->arrayCount;
+	}
+
+	unsigned int dx4xb::Texture1D::Mips() const
+	{
+		return w_view->mipCount;
+	}
+
+	DXGI_FORMAT dx4xb::Texture2D::Format() const
+	{
+		return w_resource->desc.Format;
+	}
+
+	unsigned int dx4xb::Texture2D::Width() const
+	{
+		int index = w_view->arrayStart * w_resource->desc.MipLevels + w_view->mipStart;
+		return w_resource->pLayouts[index].Footprint.Width;
+	}
+
+	unsigned int dx4xb::Texture2D::Height() const
+	{
+		int index = w_view->arrayStart * w_resource->desc.MipLevels + w_view->mipStart;
+		return w_resource->pLayouts[index].Footprint.Height;
+	}
+
+	unsigned int dx4xb::Texture2D::ArrayLength() const
+	{
+		return w_view->arrayCount;
+	}
+
+	unsigned int dx4xb::Texture2D::Mips() const
+	{
+		return w_view->mipCount;
+	}
+
+	DXGI_FORMAT dx4xb::Texture3D::Format() const
+	{
+		return w_resource->desc.Format;
+	}
+
+	unsigned int dx4xb::Texture3D::Width() const
+	{
+		return w_resource->pLayouts[w_view->mipStart].Footprint.Width;
+	}
+
+	unsigned int dx4xb::Texture3D::Height() const
+	{
+		return w_resource->pLayouts[w_view->mipStart].Footprint.Height;
+	}
+
+	unsigned int dx4xb::Texture3D::Depth() const
+	{
+		return w_resource->pLayouts[w_view->mipStart].Footprint.Depth;
+	}
+
+	unsigned int dx4xb::Texture3D::Mips() const
+	{
+		return w_view->mipCount;
+	}
 
 	int dx4xb::wResource::SizeOfFormatElement(DXGI_FORMAT format)
 	{
@@ -625,9 +1533,10 @@ namespace dx4xb {
 		DX_Resource resource,
 		const D3D12_RESOURCE_DESC& desc,
 		int elementStride,
+		int elementCount,
 		D3D12_RESOURCE_STATES initialState,
 		CPUAccessibility cpuAccessibility)
-		: device(device), resource(resource), desc(desc), elementStride(elementStride)
+		: device(device), resource(resource), desc(desc), elementStride(elementStride == 0 ? SizeOfFormatElement(desc.Format) : elementStride)
 	{
 		if (resource == nullptr) // null resource for nullview
 			return;
@@ -642,15 +1551,17 @@ namespace dx4xb {
 		pNumRows = new unsigned int[subresources];
 		pRowSizesInBytes = new UINT64[subresources];
 		device->GetCopyableFootprints(&desc, 0, subresources, 0, pLayouts, pNumRows, pRowSizesInBytes, &pTotalSizes);
+
+		this->elementCount = elementCount != 0 ? elementCount : pTotalSizes / this->elementStride;
 	}
 
-	inline D3D12_GPU_VIRTUAL_ADDRESS wResource::GetGPUVirtualAddress() {
+	D3D12_GPU_VIRTUAL_ADDRESS wResource::GetGPUVirtualAddress() {
 		return resource->GetGPUVirtualAddress();
 	}
 
 	//---Copied from d3d12x.h----------------------------------------------------------------------------
 		// Row-by-row memcpy
-	inline void MemcpySubresource(
+	void MemcpySubresource(
 		_In_ const D3D12_MEMCPY_DEST* pDest,
 		_In_ const D3D12_SUBRESOURCE_DATA* pSrc,
 		SIZE_T RowSizeInBytes,
@@ -785,6 +1696,378 @@ namespace dx4xb {
 		cmdList->ResourceBarrier(1, &barrier);
 	}
 
+	void dx4xb::wResource::WriteToMapped(byte* data, wResourceView* view, bool flipRows)
+	{
+		__ResolveUploading();
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			memcpy(
+				permanentUploadingMap + view->arrayStart * elementStride,
+				data,
+				view->arrayCount * elementStride
+			);
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+		{
+			byte* source = data;
+			for (int m = 0; m < view->mipCount; m++)
+			{
+				int index = m + view->mipStart;
+				auto subresourceFootprint = pLayouts[index].Footprint;
+
+				D3D12_SUBRESOURCE_DATA sourceData;
+				sourceData.pData = source;
+				sourceData.RowPitch = subresourceFootprint.Width * elementStride;
+				sourceData.SlicePitch = subresourceFootprint.Width * subresourceFootprint.Height * elementStride;
+
+				D3D12_MEMCPY_DEST destData;
+				destData.pData = permanentUploadingMap + pLayouts[index].Offset;
+				destData.RowPitch = subresourceFootprint.RowPitch;
+				destData.SlicePitch = subresourceFootprint.RowPitch * subresourceFootprint.Height;
+
+				MemcpySubresource(&destData, &sourceData,
+					subresourceFootprint.Width * elementStride,
+					subresourceFootprint.Height,
+					subresourceFootprint.Depth,
+					flipRows
+				);
+
+				source += subresourceFootprint.Depth * subresourceFootprint.Height * subresourceFootprint.Width * elementStride;
+			}
+			break;
+		}
+		default:
+		{
+			byte* source = data;
+			for (int a = 0; a < view->arrayCount; a++)
+				for (int m = 0; m < view->mipCount; m++)
+				{
+					int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+
+					auto subresourceFootprint = pLayouts[index].Footprint;
+
+					D3D12_SUBRESOURCE_DATA sourceData;
+					sourceData.pData = source;
+					sourceData.RowPitch = subresourceFootprint.Width * elementStride;
+					sourceData.SlicePitch = subresourceFootprint.Width * subresourceFootprint.Height * elementStride;
+
+					D3D12_MEMCPY_DEST destData;
+					destData.pData = permanentUploadingMap + pLayouts[index].Offset;
+					destData.RowPitch = subresourceFootprint.RowPitch;
+					destData.SlicePitch = subresourceFootprint.RowPitch * subresourceFootprint.Height;
+
+					MemcpySubresource(&destData, &sourceData,
+						subresourceFootprint.Width * elementStride,
+						subresourceFootprint.Height,
+						subresourceFootprint.Depth,
+						flipRows
+					);
+
+					source += subresourceFootprint.Height * subresourceFootprint.Width * elementStride;
+				}
+			break;
+		}
+		}
+	}
+
+	void dx4xb::wResource::UpdateResourceFromMapped(DX_CommandList cmdList, wResourceView* view)
+	{
+		if (cpuaccess == CPUAccessibility::Write) // writable resource dont need to update.
+			return;
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			cmdList->CopyBufferRegion(resource, view->arrayStart * elementStride, uploading, view->arrayStart * elementStride, view->arrayCount * elementStride);
+			break;
+		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+		{
+			for (int m = 0; m < view->mipCount; m++)
+			{
+				int index = m + view->mipStart;
+
+				auto subresourceFootprint = pLayouts[index].Footprint;
+
+				D3D12_TEXTURE_COPY_LOCATION dstData;
+				dstData.pResource = resource;
+				dstData.SubresourceIndex = index;
+				dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+				D3D12_TEXTURE_COPY_LOCATION srcData;
+				srcData.pResource = uploading;
+				srcData.PlacedFootprint = pLayouts[index];
+				srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+				cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
+			}
+			break;
+		}
+		default:
+		{	// Update slice region from uploading version to resource.
+			for (int a = 0; a < view->arrayCount; a++)
+				for (int m = 0; m < view->mipCount; m++)
+				{
+					int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+
+					auto subresourceFootprint = pLayouts[index].Footprint;
+
+					D3D12_TEXTURE_COPY_LOCATION dstData;
+					dstData.pResource = resource;
+					dstData.SubresourceIndex = index;
+					dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+					D3D12_TEXTURE_COPY_LOCATION srcData;
+					srcData.pResource = uploading;
+					srcData.PlacedFootprint = pLayouts[index];
+					srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+					cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
+				}
+			break;
+		}
+		}
+	}
+
+	void dx4xb::wResource::ReadFromMapped(byte* data, wResourceView* view, bool flipRows)
+	{
+		// It is not necessary unless the data is in readback heap, in that case
+		// only sets the downloading version to be the same resource, and maps.
+		__ResolveDownloading();
+
+		D3D12_RANGE range{ 0, pTotalSizes };
+
+		auto hr = downloading->Map(0, &range, (void**)&permanentDownloadingMap);
+
+		switch (desc.Dimension) {
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			memcpy(
+				data,
+				permanentDownloadingMap + view->arrayStart * elementStride,
+				view->arrayCount * elementStride
+			);
+			break;
+		default:
+			byte* destination = data;
+			for (int a = 0; a < view->arrayCount; a++)
+				for (int m = 0; m < view->mipCount; m++)
+				{
+					int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+
+					auto subresourceFootprint = pLayouts[index].Footprint;
+
+					D3D12_SUBRESOURCE_DATA sourceData;
+					sourceData.pData = permanentDownloadingMap + pLayouts[index].Offset;
+					sourceData.RowPitch = subresourceFootprint.RowPitch;
+					sourceData.SlicePitch = subresourceFootprint.RowPitch * subresourceFootprint.Height;
+
+					D3D12_MEMCPY_DEST destData;
+					destData.pData = destination;
+					destData.RowPitch = subresourceFootprint.Width * elementStride;
+					destData.SlicePitch = subresourceFootprint.Width * subresourceFootprint.Height * elementStride;
+
+					MemcpySubresource(&destData, &sourceData,
+						destData.RowPitch,
+						subresourceFootprint.Height,
+						subresourceFootprint.Depth,
+						flipRows
+					);
+
+					destination += subresourceFootprint.Depth * subresourceFootprint.Height * destData.RowPitch;
+				}
+			break;
+		}
+
+		D3D12_RANGE writeRange = { };
+		downloading->Unmap(0, &writeRange);
+	}
+
+	void dx4xb::wResource::UpdateMappedFromResource(DX_CommandList cmdList, wResourceView* view)
+	{
+		__ResolveDownloading();
+
+		if (cpuaccess == CPUAccessibility::Read) // readable resource dont need to update.
+			return;
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			cmdList->CopyBufferRegion(downloading, view->arrayStart * elementStride, resource, view->arrayStart * elementStride, view->arrayCount * elementStride);
+			break;
+		default:
+			// Update slice region from uploading version to resource.
+			for (int a = 0; a < view->arrayCount; a++)
+				for (int m = 0; m < view->mipCount; m++)
+				{
+					int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+
+					auto subresourceFootprint = pLayouts[index].Footprint;
+
+					D3D12_TEXTURE_COPY_LOCATION srcData;
+					srcData.pResource = resource;
+					srcData.SubresourceIndex = index;
+					srcData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+					D3D12_TEXTURE_COPY_LOCATION dstData;
+					dstData.pResource = downloading;
+					dstData.PlacedFootprint = pLayouts[index];
+					dstData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+					cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
+				}
+			break;
+		}
+	}
+
+	void dx4xb::wResource::WriteRegionToMappedSubresource(byte* data, wResourceView* view, const D3D12_BOX& region, bool flipRows)
+	{
+		__ResolveUploading();
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			memcpy(
+				permanentUploadingMap + (view->arrayStart + region.left) * elementStride,
+				data,
+				(region.right - region.left) * elementStride
+			);
+			break;
+		default:
+			byte* source = data;
+			int index = (view->arrayStart) * (desc.MipLevels) + view->mipStart;
+
+			auto subresourceFootprint = pLayouts[index].Footprint;
+
+			D3D12_SUBRESOURCE_DATA sourceData;
+			sourceData.pData = source;
+			sourceData.RowPitch = (region.right - region.left) * elementStride;
+			sourceData.SlicePitch = (region.right - region.left) * (region.bottom - region.top) * elementStride;
+
+			D3D12_MEMCPY_DEST destData;
+			destData.pData = permanentUploadingMap + pLayouts[index].Offset
+				+ region.front * subresourceFootprint.RowPitch * subresourceFootprint.Height
+				+ region.top * subresourceFootprint.RowPitch
+				+ region.left * elementStride;
+			destData.RowPitch = subresourceFootprint.RowPitch;
+			destData.SlicePitch = subresourceFootprint.RowPitch * subresourceFootprint.Height;
+
+			MemcpySubresource(&destData, &sourceData,
+				(region.right - region.left) * elementStride,
+				(region.bottom - region.top),
+				(region.back - region.front),
+				flipRows
+			);
+			break;
+		}
+	}
+
+	void dx4xb::wResource::UpdateRegionFromUploading(DX_CommandList cmdList, wResourceView* view, const D3D12_BOX& region)
+	{
+		if (cpuaccess == CPUAccessibility::Write) // writable resource dont need to update.
+			return;
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			cmdList->CopyBufferRegion(
+				resource, (view->arrayStart + region.left) * elementStride,
+				uploading, (view->arrayStart + region.left) * elementStride, (region.right - region.left) * elementStride);
+			break;
+		default:
+			// Update slice region from uploading version to resource.
+			int index = view->arrayStart * desc.MipLevels + view->mipStart;
+
+			auto subresourceFootprint = pLayouts[index].Footprint;
+
+			D3D12_TEXTURE_COPY_LOCATION dstData;
+			dstData.pResource = resource;
+			dstData.SubresourceIndex = index;
+			dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+			D3D12_TEXTURE_COPY_LOCATION srcData;
+			srcData.pResource = uploading;
+			srcData.PlacedFootprint = pLayouts[index];
+			srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+			cmdList->CopyTextureRegion(&dstData, region.left, region.top, region.front, &srcData, &region);
+			break;
+		}
+	}
+
+	void dx4xb::wResource::ReadRegionFromMappedSubresource(byte* data, wResourceView* view, const D3D12_BOX& region, bool flipRows)
+	{
+		__ResolveDownloading();
+
+		switch (desc.Dimension) {
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			memcpy(
+				data,
+				permanentDownloadingMap + (view->arrayStart + region.left) * elementStride,
+				(region.right - region.left) * elementStride
+			);
+			break;
+		default:
+			byte* destination = data;
+			int index = (view->arrayStart) * (desc.MipLevels) + view->mipStart;
+
+			auto subresourceFootprint = pLayouts[index].Footprint;
+
+			D3D12_SUBRESOURCE_DATA sourceData;
+			sourceData.pData = permanentDownloadingMap + pLayouts[index].Offset
+				+ region.front * subresourceFootprint.Height * subresourceFootprint.RowPitch
+				+ region.top * subresourceFootprint.RowPitch
+				+ region.left * elementStride;
+			sourceData.RowPitch = subresourceFootprint.RowPitch;
+			sourceData.SlicePitch = subresourceFootprint.RowPitch * subresourceFootprint.Height;
+
+			D3D12_MEMCPY_DEST destData;
+			destData.pData = destination;
+			destData.RowPitch = (region.right - region.left) * elementStride;
+			destData.SlicePitch = (region.right - region.left) * (region.bottom - region.top) * elementStride;
+
+			MemcpySubresource(&destData, &sourceData,
+				destData.RowPitch,
+				(region.bottom - region.top),
+				(region.back - region.front),
+				flipRows
+			);
+			break;
+		}
+	}
+
+	void dx4xb::wResource::UpdateRegionToDownloading(DX_CommandList cmdList, wResourceView* view, const D3D12_BOX& region)
+	{
+		if (cpuaccess == CPUAccessibility::Read) // readable resource dont need to update.
+			return;
+
+		switch (desc.Dimension)
+		{
+		case D3D12_RESOURCE_DIMENSION_BUFFER:
+			cmdList->CopyBufferRegion(
+				downloading, (view->arrayStart + region.left) * elementStride,
+				resource, (view->arrayStart + region.left) * elementStride, (region.right - region.left) * elementStride);
+			break;
+		default:
+			// Update slice region from uploading version to resource.
+			int index = view->arrayStart * desc.MipLevels + view->mipStart;
+
+			auto subresourceFootprint = pLayouts[index].Footprint;
+
+			D3D12_TEXTURE_COPY_LOCATION dstData;
+			dstData.pResource = downloading;
+			dstData.PlacedFootprint = pLayouts[index];
+			dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+			D3D12_TEXTURE_COPY_LOCATION srcData;
+			srcData.pResource = uploading;
+			srcData.SubresourceIndex = index;
+			srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+			cmdList->CopyTextureRegion(&dstData, region.left, region.top, region.front, &srcData, &region);
+			break;
+		}
+	}
 
 	D3D12_CPU_DESCRIPTOR_HANDLE wResourceView::GetCPUHandleFor(D3D12_DESCRIPTOR_RANGE_TYPE type) {
 		switch (type) {
@@ -948,7 +2231,6 @@ namespace dx4xb {
 		return uav_cached_handle;
 	}
 
-
 	int wResourceView::getCBV() {
 		if ((handle_mask & 4) != 0)
 			return cbv_cached_handle;
@@ -1055,6 +2337,160 @@ namespace dx4xb {
 		return result;
 	}
 
+
+#pragma endregion
+
+#pragma region Imaging
+
+	gObj<TextureData> CreateTextureDataFromScratchImage(DirectX::TexMetadata& metadata, DirectX::ScratchImage& image, bool flipY) {
+		byte* buffer = new byte[image.GetPixelsSize()];
+		memcpy(buffer, image.GetPixels(), image.GetPixelsSize());
+
+		return metadata.dimension == D3D12_RESOURCE_DIMENSION_TEXTURE2D ?
+			new TextureData(metadata.width, metadata.height, metadata.mipLevels, metadata.arraySize, metadata.format, buffer, image.GetPixelsSize(), flipY)
+			: new TextureData(metadata.width, metadata.height, metadata.depth, metadata.format, buffer, image.GetPixelsSize(), flipY);
+	}
+
+	TextureData::TextureData(int width, int height, int mipMaps, int slices, DXGI_FORMAT format, byte* data, long long dataSize, bool flipY)
+		:Width(width), Height(height),
+		MipMaps(mipMaps),
+		ArraySlices(slices),
+		Format(format),
+		Data(data),
+		DataSize(dataSize),
+		FlipY(flipY),
+		pixelStride(DirectX::BitsPerPixel(format) / 8),
+		Dimension(D3D12_RESOURCE_DIMENSION_TEXTURE2D)
+	{
+		footprints = new D3D12_PLACED_SUBRESOURCE_FOOTPRINT[mipMaps * slices];
+		int index = 0;
+		UINT64 offset = 0;
+		for (int s = 0; s < slices; s++)
+		{
+			int w = Width;
+			int h = Height;
+			for (int m = 0; m < mipMaps; m++)
+			{
+				footprints[index].Footprint.Width = w;
+				footprints[index].Footprint.Height = h;
+				footprints[index].Footprint.Format = format;
+				footprints[index].Footprint.RowPitch = pixelStride * w;
+				footprints[index].Footprint.Depth = 1;
+				footprints[index].Offset = offset;
+
+				offset += w * h * pixelStride;
+
+				w /= 2; w = max(1, w);
+				h /= 2; h = max(1, h);
+
+				index++;
+			}
+		}
+	}
+
+	TextureData::TextureData(int width, int height, int depth, DXGI_FORMAT format, byte* data, long long dataSize, bool flipY)
+		:Width(width), Height(height),
+		MipMaps(1),
+		Depth(depth),
+		Format(format),
+		Data(data),
+		DataSize(dataSize),
+		FlipY(flipY),
+		pixelStride(DirectX::BitsPerPixel(format) / 8),
+		Dimension(D3D12_RESOURCE_DIMENSION_TEXTURE3D)
+	{
+		footprints = new D3D12_PLACED_SUBRESOURCE_FOOTPRINT[1];
+
+		footprints[0].Footprint.Width = width;
+		footprints[0].Footprint.Height = height;
+		footprints[0].Footprint.Depth = depth;
+		footprints[0].Footprint.Format = format;
+		footprints[0].Footprint.RowPitch = pixelStride * width;
+		footprints[0].Offset = 0;
+	}
+
+	TextureData::~TextureData() {
+		delete[] Data;
+		delete[] footprints;
+	}
+
+	gObj<TextureData> TextureData::CreateEmpty(int width, int height, int mipMaps, int slices, DXGI_FORMAT format) {
+
+		int pixelStride = DirectX::BitsPerPixel(format) / 8;
+		UINT64 total = 0;
+		int w = width, h = height;
+		for (int i = 0; i < mipMaps; i++)
+		{
+			total += w * h * pixelStride;
+			w /= 2;
+			h /= 2;
+			w = max(1, w);
+			h = max(1, h);
+		}
+		total *= slices;
+		byte* data = new byte[total];
+		ZeroMemory(data, total);
+		return new TextureData(width, height, mipMaps, slices, format, data, total, false);
+	}
+
+	gObj<TextureData> TextureData::CreateEmpty(int width, int height, int depth, DXGI_FORMAT format) {
+		int pixelStride = DirectX::BitsPerPixel(format) / 8;
+		UINT64 total = width * height * depth * pixelStride;
+		byte* data = new byte[total];
+		ZeroMemory(data, total);
+		return new TextureData(width, height, depth, format, data, total, false);
+	}
+
+	gObj<TextureData> TextureData::LoadFromFile(const char* filename) {
+
+		static bool InitializedWic = false;
+
+		if (!InitializedWic) {
+			void* res = nullptr;
+			CoInitialize(res);
+			InitializedWic = true;
+		}
+
+		wchar_t* file = new wchar_t[strlen(filename) + 1];
+		OemToCharW(filename, file);
+		DirectX::TexMetadata metadata;
+		DirectX::ScratchImage scratchImage;
+
+		bool notDDS;
+		bool notWIC;
+		bool notTGA;
+
+		if (
+			(notDDS = FAILED(DirectX::LoadFromDDSFile(file, 0, &metadata, scratchImage)))
+			&& (notWIC = FAILED(DirectX::LoadFromWICFile(file, 0, &metadata, scratchImage)))
+			&& (notTGA = FAILED(DirectX::LoadFromTGAFile(file, &metadata, scratchImage))))
+			return nullptr;
+
+		return CreateTextureDataFromScratchImage(metadata, scratchImage, true);
+	}
+
+	void TextureData::SaveToFile(gObj<TextureData> data, const char* filename) {
+		static bool InitializedWic = false;
+
+		if (!InitializedWic) {
+			void* res = nullptr;
+			CoInitialize(res);
+			InitializedWic = true;
+		}
+
+		DirectX::Image img;
+		img.format = data->Format;
+		img.width = data->Width;
+		img.height = data->Height;
+		img.rowPitch = data->pixelStride * data->Width;
+		img.slicePitch = data->pixelStride * data->Width * data->Height;
+		img.pixels = data->Data;
+
+		wchar_t* file = new wchar_t[strlen(filename) + 1];
+		OemToCharW(filename, file);
+
+		DirectX::SaveToWICFile(img, DirectX::WIC_FLAGS_FORCE_RGB, DirectX::GetWICCodec(DirectX::WIC_CODEC_PNG), file);
+	}
 
 #pragma endregion
 
@@ -1168,29 +2604,221 @@ namespace dx4xb {
 		cpu_csu = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 1000000);
 		cpu_smp = new CPUDescriptorHeapManager(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 2000);
 
-		//// Create rendertargets resources.
-		//{
-		//	RenderTargets = new gObj<Texture2D>[swapChainDesc.BufferCount];
-		//	RenderTargetsRTV = new D3D12_CPU_DESCRIPTOR_HANDLE[swapChainDesc.BufferCount];
-		//	// Create a RTV and a command allocator for each frame.
-		//	for (UINT n = 0; n < swapChainDesc.BufferCount; n++)
-		//	{
-		//		DX_Resource rtResource;
-		//		swapChain->GetBuffer(n, IID_PPV_ARGS(&rtResource));
+		// Create rendertargets resources.
+		{
+			RenderTargets = new gObj<Texture2D>[swapChainDesc.BufferCount];
+			RenderTargetsRTV = new D3D12_CPU_DESCRIPTOR_HANDLE[swapChainDesc.BufferCount];
+			// Create a RTV and a command allocator for each frame.
+			for (UINT n = 0; n < swapChainDesc.BufferCount; n++)
+			{
+				DX_Resource rtResource;
+				swapChain->GetBuffer(n, IID_PPV_ARGS(&rtResource));
 
-		//		auto desc = rtResource->GetDesc();
+				auto desc = rtResource->GetDesc();
 
-		//		DX_ResourceWrapper* rw = new DX_ResourceWrapper(this, rtResource, desc, D3D12_RESOURCE_STATE_COPY_DEST, CPUAccessibility::None);
+				wResource* rw = new wResource(this->device, rtResource, desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST, CPUAccessibility::None);
 
-		//		RenderTargets[n] = new Texture2D(rw, nullptr, desc.Format, desc.Width, desc.Height, 1, 1);
-		//		RenderTargetsRTV[n] = RenderTargets[n]->__InternalViewWrapper->getRTVHandle();
-		//	}
-		//}
+				RenderTargets[n] = new Texture2D(this, rw, nullptr);
+				RenderTargetsRTV[n] = RenderTargets[n]->w_view->getRTVHandle();
+			}
+		}
 	}
 
 #pragma endregion
 
 #pragma region Device Manager
+
+	void DeviceManager::Dispatch_Process(gObj<GPUProcess> process) {
+		device->scheduler->Enqueue(process);
+	}
+
+	void DeviceManager::Dispatch_Process_Async(gObj<GPUProcess> process) {
+		device->scheduler->EnqueueAsync(process);
+	}
+
+	gObj<Texture2D> DeviceManager::CurrentRenderTarget() {
+		return device->RenderTargets[device->scheduler->CurrentFrameIndex];
+	}
+
+	wResource* DeviceManager::CreateResource(
+		const D3D12_RESOURCE_DESC& desc,
+		int elementStride,
+		int elementCount,
+		D3D12_RESOURCE_STATES initialState,
+		D3D12_CLEAR_VALUE* clearing,
+		CPUAccessibility accessibility
+	) {
+		D3D12_HEAP_PROPERTIES heapProp;
+
+		switch (accessibility) {
+		case CPUAccessibility::None:
+			heapProp.Type = D3D12_HEAP_TYPE_DEFAULT;
+			heapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProp.VisibleNodeMask = 1;
+			heapProp.CreationNodeMask = 1;
+			break;
+		case CPUAccessibility::Write:
+			heapProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+			heapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProp.VisibleNodeMask = 1;
+			heapProp.CreationNodeMask = 1;
+			break;
+		case CPUAccessibility::Read:
+			heapProp.Type = D3D12_HEAP_TYPE_READBACK;
+			heapProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+			heapProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+			heapProp.VisibleNodeMask = 1;
+			heapProp.CreationNodeMask = 1;
+			break;
+		}
+
+		DX_Resource resource;
+		auto hr = device->device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &desc, initialState, clearing,
+			IID_PPV_ARGS(&resource));
+
+		if (FAILED(hr))
+		{
+			auto _hr = device->device->GetDeviceRemovedReason();
+			throw Exception::FromError(Errors::RunOutOfMemory, nullptr, _hr);
+		}
+
+		return new wResource(device->device, resource, desc, elementStride, elementCount, initialState, accessibility);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_CB(int elementStride, bool dynamic) 
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, (elementStride + 255) & (~255));
+		return CreateResourceView<Buffer>(desc, elementStride, 1, dynamic ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, nullptr, dynamic ? CPUAccessibility::Write : CPUAccessibility::None);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_ADS(int elementStride, int count) 
+	{
+		if (count == 0) return nullptr;
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, elementStride * count, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COMMON | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_SRV(int elementStride, int count) 
+	{
+		if (count == 0) return nullptr;
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, elementStride * count);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_VB(int elementStride, int count) 
+	{
+		if (count == 0) return nullptr;
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, elementStride * count);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_IB(int elementStride, int count)
+	{
+		if (count == 0) return nullptr;
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, elementStride * count);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Buffer> DeviceManager::Create_Buffer_UAV(int elementStride, int count) 
+	{
+		if (count == 0) return nullptr;
+		D3D12_RESOURCE_DESC desc = { };
+		FillBufferDescription(desc, elementStride * count, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	}
+
+	gObj<Texture1D> dx4xb::DeviceManager::Create_Texture1D_SRV(DXGI_FORMAT format, int width, int mips, int arrayLength)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture1DDescription(format, desc, width, mips, arrayLength);
+		return CreateResourceView<Texture1D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Texture1D> dx4xb::DeviceManager::Create_Texture1D_UAV(DXGI_FORMAT format, int width, int mips, int arrayLength)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture1DDescription(format, desc, width, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		return CreateResourceView<Texture1D>(desc, 0, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	}
+
+	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_SRV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture2DDescription(format, desc, width, height, mips, arrayLength);
+		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_SRV(dx4xb::string filePath)
+	{
+		auto data = TextureData::LoadFromFile(filePath.c_str());
+		gObj<Texture2D> texture = Create_Texture2D_SRV(data->Format, data->Width, data->Height, data->MipMaps, data->ArraySlices);
+		texture->Write(data->Data, true);
+		return texture;
+	}
+
+	void dx4xb::DeviceManager::Create_File(dx4xb::string filePath, gObj<Texture2D> texture)
+	{
+		gObj<TextureData> data = TextureData::CreateEmpty(texture->Width(), texture->Height(), 1, 1, texture->w_resource->desc.Format);
+		texture->Read(data->Data);
+		TextureData::SaveToFile(data, filePath.c_str());
+	}
+
+	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_UAV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture2DDescription(format, desc, width, height, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	}
+
+	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_RT(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture2DDescription(format, desc, width, height, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	}
+
+	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_DSV(int width, int height, DXGI_FORMAT format)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture2DDescription(format, desc, width, height, 1, 1, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
+		D3D12_CLEAR_VALUE clearing;
+		clearing.DepthStencil = D3D12_DEPTH_STENCIL_VALUE{
+			1.0f,
+			0
+		};
+		clearing.Format = format;
+		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clearing);
+	}
+
+	gObj<Texture3D> dx4xb::DeviceManager::Create_Texture3D_SRV(DXGI_FORMAT format, int width, int height, int depth, int mips)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture3DDescription(format, desc, width, height, depth, mips);
+		return CreateResourceView<Texture3D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
+	}
+
+	gObj<Texture3D> dx4xb::DeviceManager::Create_Texture3D_UAV(DXGI_FORMAT format, int width, int height, int depth, int mips)
+	{
+		D3D12_RESOURCE_DESC desc = { };
+		FillTexture3DDescription(format, desc, width, height, depth, mips, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
+		return CreateResourceView<Texture3D>(desc, 0, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+	}
+
+	Signal DeviceManager::Flush(EngineMask mask) {
+		return device->scheduler->FlushAndSignal(mask);
+	}
+
+	void Technique::OnCreate(wDevice* w_device) {
+		this->device = w_device;
+		OnLoad();
+	}
 
 	gObj<Presenter> Presenter::Create(const PresenterDescription& desc)
 	{
