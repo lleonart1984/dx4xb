@@ -1031,6 +1031,11 @@ namespace dx4xb {
 		cmdList->ClearRenderTargetView(view->getRTVHandle(), values, 0, nullptr);
 	}
 
+	void dx4xb::GraphicsManager::Clear_DepthStencil(gObj<Texture2D> depthStencil, float depth, UINT8 stencil, D3D12_CLEAR_FLAGS flags)
+	{
+		w_cmdList->cmdList->ClearDepthStencilView(depthStencil->w_view->getDSVHandle(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, depth, stencil, 0, nullptr);
+	}
+
 	void dx4xb::CopyManager::Load_AllToGPU(gObj<ResourceView> resource)
 	{
 		resource->w_resource->UpdateResourceFromMapped(this->w_cmdList->cmdList, resource->w_view);
@@ -1281,7 +1286,7 @@ namespace dx4xb {
 		this->w_resource->resource->SetName(name);
 	}
 
-	CPUAccessibility dx4xb::ResourceView::getCPUAccessibility() const
+	CPUAccessibility dx4xb::ResourceView::CPUAccessibility() const
 	{
 		return w_resource->cpuaccess;
 	}
@@ -2848,6 +2853,16 @@ namespace dx4xb {
 
 	Presenter::~Presenter() {
 		delete device;
+	}
+
+	void Presenter::GetInternalDXInfo(InternalDXInfo& info) {
+		info.Buffers = device->desc.Frames;
+		info.device = device->device;
+		info.swapChain = device->swapChain;
+		info.mainCmdList = device->scheduler->Engines[0].threadInfos[0].cmdList;
+		info.hWnd = device->desc.hWnd;
+		info.RenderTargetFormat = device->RenderTargets[0]->Format();
+		info.RenderTargets = device->RenderTargetsRTV;
 	}
 
 #pragma endregion

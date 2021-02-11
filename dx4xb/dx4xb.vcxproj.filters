@@ -27,6 +27,9 @@
     <ClInclude Include="dx4xb_private.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="dx4xb_scene.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dx4xb.cpp">
@@ -34,6 +37,9 @@
     </ClCompile>
     <ClCompile Include="pch.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="dx4xb_scene.cpp">
+      <Filter>Header Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
