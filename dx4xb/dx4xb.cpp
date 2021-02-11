@@ -531,6 +531,78 @@ namespace dx4xb {
 		return code;
 	}
 
+	struct DX_LibraryWrapper {
+		D3D12_SHADER_BYTECODE bytecode;
+		list<D3D12_EXPORT_DESC> exports;
+	};
+
+	struct DX_ShaderTable {
+		DX_Resource Buffer;
+		void* MappedData;
+		int ShaderIDSize;
+		int ShaderRecordSize;
+	};
+
+	struct DX_BakedGeometry {
+		DX_Resource bottomLevelAccDS;
+		DX_Resource scratchBottomLevelAccDS;
+		long updatingVersion;
+		long structuralVersion;
+	};
+
+	struct DX_BakedScene {
+		DX_Resource topLevelAccDS;
+		DX_Resource scratchBuffer;
+		DX_Resource instancesBuffer;
+		void* instancesBufferMap;
+		long updatingVersion;
+		long structuralVersion;
+	};
+
+	struct DX_GeometryCollectionWrapper {
+		// GPU version of this geometry collection
+		gObj<DX_BakedGeometry> gpuVersion = nullptr;
+		// Increases if vertex data or aabbs geometry is updated.
+		long updatingVersion = 0;
+		// Increases if number of geometries or new geometry element is created or removed.
+		long structuralVersion = 0;
+
+		// The ADS was created to support fast updates.
+		// If this is false, update can be possible only through rebuilding
+		bool allowsUpdating;
+
+		gObj<list<D3D12_RAYTRACING_GEOMETRY_DESC>> geometries = new list<D3D12_RAYTRACING_GEOMETRY_DESC>();
+
+		// Triangles definitions
+		gObj<Buffer> boundVertices;
+		gObj<Buffer> boundIndices;
+		gObj<Buffer> boundTransforms;
+		int currentVertexOffset = 0;
+		DXGI_FORMAT currentVertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
+
+		// Procedural definitions
+		gObj<Buffer> aabbs;
+
+		DX_CommandList cmdList;
+	};
+
+	struct DX_InstanceCollectionWrapper {
+		// GPU version of this instance collection.
+		gObj<DX_BakedScene> gpuVersion = nullptr;
+		// Increases if some instance attribute is updated.
+		long updatingVersion = 0;
+		// Increases if number of instance is modified.
+		long structuralVersion = 0;
+
+		// The ADS was created to support fast updates.
+		// If this is false, update can be possible only through rebuilding
+		bool allowsUpdating;
+
+		// List with persistent reference to geometries used by the instances in this collection.
+		gObj<list<gObj<GeometryCollection>>> usedGeometries = new list<gObj<GeometryCollection>>();
+		// Instances
+		gObj<list<D3D12_RAYTRACING_INSTANCE_DESC>> instances = new list<D3D12_RAYTRACING_INSTANCE_DESC>();
+	};
 
 	// Represents a binding of a resource (or resource array) to a shader slot.
 	struct SlotBinding {
@@ -750,8 +822,7 @@ namespace dx4xb {
 					if (scene->State() == CollectionState::NotBuilt)
 						throw Exception::FromError(Errors::Invalid_Operation, "Scene should be loaded on the GPU first.");
 
-					//TODO!!!
-					//cmdList->SetComputeRootShaderResourceView(i, scene->wrapper->gpuVersion->topLevelAccDS->GetGPUVirtualAddress());
+					cmdList->SetComputeRootShaderResourceView(i, scene->wrapper->gpuVersion->topLevelAccDS->GetGPUVirtualAddress());
 					break;
 				}
 				}
@@ -1013,10 +1084,1110 @@ namespace dx4xb {
 
 #pragma region RTX support
 
-	CollectionState dx4xb::InstanceCollection::State()
-	{
-		throw Exception::FromError(Errors::Unsupported_Fallback);
+	// Intenal representation of a program.
+	// Includes binding objects, signatures and shader tables
+	struct wProgram {
+		//! Gets the global bindings for all programs
+		gObj<RaytracingBinder> globals;
+		//! Gets the locals raygen bindings
+		gObj<RaytracingBinder> raygen_locals;
+		//! Gets the locals miss bindings
+		gObj<RaytracingBinder> miss_locals;
+		//! Gets the locals hitgroup bindings
+		gObj<RaytracingBinder> hitGroup_locals;
+		// Gets the list of all hit groups created in this rt program
+		list<gObj<HitGroupHandle>> hitGroups;
+		// Gets the list of all associations between shaders and global bindings
+		table<LPCWSTR> associationsToGlobal = table<LPCWSTR>(500);
+		// Gets the list of all associations between shaders and raygen local bindings
+		table<LPCWSTR> associationsToRayGenLocals = table<LPCWSTR>(500);
+		// Gets the list of all associations between shaders and miss local bindings
+		table<LPCWSTR> associationsToMissLocals = table<LPCWSTR>(500);
+		// Gets the list of all associations between shaders and hitgroup local bindings
+		table<LPCWSTR> associationsToHitGroupLocals = table<LPCWSTR>(500);
+
+		list<gObj<ProgramHandle>> loadedShaderPrograms;
+
+		// Shader table for ray generation shader
+		DX_ShaderTable raygen_shaderTable;
+		// Shader table for all miss shaders
+		DX_ShaderTable miss_shaderTable;
+		// Shader table for all hitgroup entries
+		DX_ShaderTable group_shaderTable;
+		// Gets the attribute size in bytes for this program (normally 2 floats)
+		int AttributesSize = 2 * 4;
+		// Gets the ray payload size in bytes for this program (normally 3 floats)
+		int PayloadSize = 3 * 4;
+		// Gets the stack size required for this program
+		int StackSize = 1;
+		// Gets the maximum number of hit groups that will be setup before any 
+		// single dispatch rays
+		int MaxGroups = 1024 * 1024;
+		// Gets the maximum number of miss programs that will be setup before any
+		// single dispatch rays
+		int MaxMiss = 10;
+
+		DX_RootSignature globalSignature = nullptr;
+		DX_RootSignature rayGen_Signature = nullptr;
+		DX_RootSignature miss_Signature = nullptr;
+		DX_RootSignature hitGroup_Signature = nullptr;
+
+		int globalSignatureSize = 0;
+		int rayGen_SignatureSize = 0;
+		int miss_SignatureSize = 0;
+		int hitGroup_SignatureSize = 0;
+
+		void BindLocalsOnShaderTable(gObj<RaytracingBinder> binder, byte* shaderRecordData) {
+
+			list<SlotBinding> &bindings = binder->__InternalBindingObject->bindings;
+
+			for (int i = 0; i < bindings.size(); i++)
+			{
+				auto binding = bindings[i];
+
+				switch (binding.Root_Parameter.ParameterType)
+				{
+				case D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS:
+					memcpy(shaderRecordData, binding.ConstantData.ptrToConstant, binding.Root_Parameter.Constants.Num32BitValues * 4);
+					shaderRecordData += binding.Root_Parameter.Constants.Num32BitValues * 4;
+					break;
+				default:
+					shaderRecordData += 4 * 4;
+				}
+			}
+		}
+
+		void BindLocal(
+			wDevice* dxWrapper,
+			DX_ShaderTable& shadertable,
+			gObj<ProgramHandle> shader,
+			int index,
+			gObj<RaytracingBinder> binder)
+		{
+			byte* shaderRecordStart = (byte*)shadertable.MappedData + shadertable.ShaderRecordSize * index;
+			memcpy(shaderRecordStart, shader->cachedShaderIdentifier, shadertable.ShaderIDSize);
+			if (binder->HasSomeBindings())
+				BindLocalsOnShaderTable(binder, shaderRecordStart + shadertable.ShaderIDSize);
+		}
+		void BindLocal(wDevice* dxWrapper, gObj<RayGenerationHandle> shader) {
+			BindLocal(dxWrapper,
+				raygen_shaderTable,
+				shader, 0, raygen_locals);
+		}
+
+		void BindLocal(wDevice* dxWrapper, gObj<MissHandle> shader, int index) {
+			BindLocal(dxWrapper,
+				miss_shaderTable,
+				shader, index, miss_locals);
+		}
+
+		void BindLocal(wDevice* dxWrapper, gObj<HitGroupHandle> shader, int index) {
+			BindLocal(dxWrapper,
+				group_shaderTable,
+				shader, index, hitGroup_locals);
+		}
+	};
+
+	struct wStateObject {
+
+		wDevice* dxWrapper;
+
+		// Collects all libraries used in this pipeline.
+		list<DX_LibraryWrapper> libraries = {};
+		// Collects all programs used in this pipeline.
+		list<gObj<RaytracingProgramBase>> programs = {};
+		// Pipeline object state created for this pipeline.
+		DX_StateObject stateObject;
+	};
+
+	void RaytracingBinder::ADS(int slot, gObj<InstanceCollection>& const scene) {
+		D3D12_ROOT_PARAMETER p = { };
+		p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+		p.Descriptor.ShaderRegister = slot;
+		p.Descriptor.RegisterSpace = space;
+
+		SlotBinding b{ };
+		b.Root_Parameter = p;
+		b.SceneData.ptrToScene = (void*)&scene;
+
+		__InternalBindingObject->AddBinding(collectGlobal, b);
 	}
+
+	void RaytracingPipeline::AppendCode(const D3D12_SHADER_BYTECODE& code)
+	{
+		DX_LibraryWrapper lib = { };
+		lib.bytecode = code;
+		wrapper->libraries.add(lib);
+	}
+
+	void RaytracingPipeline::LoadProgram(gObj<RaytracingProgramBase> program) {
+		wrapper->programs.add(program);
+		program->OnLoad(wrapper->dxWrapper);
+	}
+
+	void RaytracingPipeline::DeclareExport(LPCWSTR shader) {
+		if (wrapper->libraries.size() == 0)
+			throw Exception::FromError(Errors::Invalid_Operation, "Load a library code at least first.");
+
+		wrapper->libraries.last().exports.add({ shader });
+	}
+
+	void RaytracingPipeline::HitGroup(gObj<HitGroupHandle>& hitGroup, gObj<ClosestHitHandle> closest, gObj<AnyHitHandle> anyHit, gObj<IntersectionHandle> intersection)
+	{
+		hitGroup = new HitGroupHandle(closest, anyHit, intersection);
+	}
+
+	void RaytracingProgramBase::Payload(int sizeInBytes) {
+		wrapper->PayloadSize = sizeInBytes;
+	}
+	void RaytracingProgramBase::MaxHitGroupIndex(int index) {
+		wrapper->MaxGroups = index + 1;
+	}
+	void RaytracingProgramBase::StackSize(int maxDeep) {
+		wrapper->StackSize = maxDeep;
+	}
+	void RaytracingProgramBase::Attribute(int sizeInBytes) {
+		wrapper->AttributesSize = sizeInBytes;
+	}
+
+	void RaytracingProgramBase::Shader(gObj<HitGroupHandle>& handle)
+	{
+		wrapper->hitGroups.add(handle);
+		wrapper->associationsToGlobal.add(handle->shaderHandle);
+		wrapper->associationsToHitGroupLocals.add(handle->shaderHandle);
+
+		// load all group shaders
+		if (!handle->closestHit.isNull() && !handle->closestHit->IsNull())
+		{
+			wrapper->associationsToGlobal.add(handle->closestHit->shaderHandle);
+			wrapper->associationsToHitGroupLocals.add(handle->closestHit->shaderHandle);
+		}
+		if (!handle->anyHit.isNull() && !handle->anyHit->IsNull())
+		{
+			wrapper->associationsToGlobal.add(handle->anyHit->shaderHandle);
+			wrapper->associationsToHitGroupLocals.add(handle->anyHit->shaderHandle);
+		}
+		if (!handle->intersection.isNull() && !handle->intersection->IsNull())
+		{
+			wrapper->associationsToGlobal.add(handle->intersection->shaderHandle);
+			wrapper->associationsToHitGroupLocals.add(handle->intersection->shaderHandle);
+		}
+		wrapper->loadedShaderPrograms.add(handle);
+	}
+
+	void RaytracingProgramBase::Shader(gObj<RayGenerationHandle>& handle) {
+		wrapper->associationsToGlobal.add(handle->shaderHandle);
+		wrapper->associationsToRayGenLocals.add(handle->shaderHandle);
+		wrapper->loadedShaderPrograms.add(handle);
+	}
+
+	void RaytracingProgramBase::Shader(gObj<MissHandle>& handle) {
+		wrapper->associationsToGlobal.add(handle->shaderHandle);
+		wrapper->associationsToMissLocals.add(handle->shaderHandle);
+		wrapper->loadedShaderPrograms.add(handle);
+	}
+
+	// Creates the Pipeline object.
+	// This method collects bindings, create signatures and 
+	// creates the pipeline state object.
+	void RaytracingPipeline::OnCreate(wDevice* dxWrapper)
+	{
+		this->wrapper = new wStateObject();
+		this->wrapper->dxWrapper = dxWrapper;
+		// Load Library, programs and setup settings.
+		this->Setup();
+
+		// TODO: Create the so
+#pragma region counting states
+		int count = 0;
+
+		// 1 x each library (D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY)
+		count += wrapper->libraries.size();
+
+		int maxAttributes = 2 * 4;
+		int maxPayload = 3 * 4;
+		int maxStackSize = 1;
+
+		for (int i = 0; i < wrapper->programs.size(); i++)
+		{
+			gObj<RaytracingProgramBase> program = wrapper->programs[i];
+
+			maxAttributes = max(maxAttributes, program->wrapper->AttributesSize);
+			maxPayload = max(maxPayload, program->wrapper->PayloadSize);
+			maxStackSize = max(maxStackSize, program->wrapper->StackSize);
+
+			// Global root signature
+			if (!program->wrapper->globals.isNull())
+				count++;
+			// Local raygen root signature
+			if (program->wrapper->raygen_locals->HasSomeBindings())
+				count++;
+			// Local miss root signature
+			if (program->wrapper->miss_locals->HasSomeBindings())
+				count++;
+			// Local hitgroup root signature
+			if (program->wrapper->hitGroup_locals->HasSomeBindings())
+				count++;
+
+			// Associations to global root signature
+			if (program->wrapper->associationsToGlobal.size() > 0)
+				count++;
+			// Associations to raygen local root signature
+			if (program->wrapper->raygen_locals->HasSomeBindings()
+				&& program->wrapper->associationsToRayGenLocals.size() > 0)
+				count++;
+			// Associations to miss local root signature
+			if (program->wrapper->miss_locals->HasSomeBindings()
+				&& program->wrapper->associationsToMissLocals.size() > 0)
+				count++;
+			// Associations to hitgroup local root signature
+			if (program->wrapper->hitGroup_locals->HasSomeBindings()
+				&& program->wrapper->associationsToHitGroupLocals.size() > 0)
+				count++;
+			// 1 x each hit group
+			count += program->wrapper->hitGroups.size();
+		}
+
+		// 1 x shader config
+		count++;
+		// 1 x pipeline config
+		count++;
+
+#pragma endregion
+
+		AllocateStates(count);
+
+#pragma region Fill States
+
+		int index = 0;
+		// 1 x each library (D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY)
+		for (int i = 0; i < wrapper->libraries.size(); i++)
+			SetDXIL(index++, wrapper->libraries[i].bytecode, wrapper->libraries[i].exports);
+
+		D3D12_STATE_SUBOBJECT* globalRS = nullptr;
+		D3D12_STATE_SUBOBJECT* localRayGenRS = nullptr;
+		D3D12_STATE_SUBOBJECT* localMissRS = nullptr;
+		D3D12_STATE_SUBOBJECT* localHitGroupRS = nullptr;
+
+		for (int i = 0; i < wrapper->programs.size(); i++)
+		{
+			gObj<RaytracingProgramBase> program = wrapper->programs[i];
+
+			// Global root signature
+			if (!program->wrapper->globals.isNull())
+			{
+				globalRS = &dynamicStates[index];
+				SetGlobalRootSignature(index++, program->wrapper->globalSignature);
+			}
+			// Local raygen root signature
+			if (program->wrapper->raygen_locals->HasSomeBindings())
+			{
+				localRayGenRS = &dynamicStates[index];
+				SetLocalRootSignature(index++, program->wrapper->rayGen_Signature);
+			}
+			// Local miss root signature
+			if (program->wrapper->miss_locals->HasSomeBindings())
+			{
+				localMissRS = &dynamicStates[index];
+				SetLocalRootSignature(index++, program->wrapper->miss_Signature);
+			}
+			// Local hitgroup root signature
+			if (program->wrapper->hitGroup_locals->HasSomeBindings())
+			{
+				localHitGroupRS = &dynamicStates[index];
+				SetLocalRootSignature(index++, program->wrapper->hitGroup_Signature);
+			}
+
+			for (int j = 0; j < program->wrapper->hitGroups.size(); j++)
+			{
+				auto hg = program->wrapper->hitGroups[j];
+				if (hg->intersection.isNull())
+					SetTriangleHitGroup(index++, hg->shaderHandle,
+						hg->anyHit.isNull() ? nullptr : hg->anyHit->shaderHandle,
+						hg->closestHit.isNull() ? nullptr : hg->closestHit->shaderHandle);
+				else
+					SetProceduralGeometryHitGroup(index++, hg->shaderHandle,
+						hg->anyHit ? hg->anyHit->shaderHandle : nullptr,
+						hg->closestHit ? hg->closestHit->shaderHandle : nullptr,
+						hg->intersection ? hg->intersection->shaderHandle : nullptr);
+			}
+
+			// Associations to global root signature
+			if (program->wrapper->associationsToGlobal.size() > 0)
+				SetExportsAssociations(index++, globalRS, program->wrapper->associationsToGlobal);
+			// Associations to raygen local root signature
+			if (program->wrapper->raygen_locals->HasSomeBindings() && program->wrapper->associationsToRayGenLocals.size() > 0)
+				SetExportsAssociations(index++, localRayGenRS, program->wrapper->associationsToRayGenLocals);
+			// Associations to miss local root signature
+			if (program->wrapper->miss_locals->HasSomeBindings() && program->wrapper->associationsToMissLocals.size() > 0)
+				SetExportsAssociations(index++, localMissRS, program->wrapper->associationsToMissLocals);
+			// Associations to hitgroup local root signature
+			if (program->wrapper->hitGroup_locals->HasSomeBindings() && program->wrapper->associationsToHitGroupLocals.size() > 0)
+				SetExportsAssociations(index++, localHitGroupRS, program->wrapper->associationsToHitGroupLocals);
+		}
+
+		// 1 x shader config
+		SetRTSizes(index++, maxAttributes, maxPayload);
+		SetMaxRTRecursion(index++, maxStackSize);
+
+#pragma endregion
+
+		// Create so
+		D3D12_STATE_OBJECT_DESC soDesc = { };
+		soDesc.Type = D3D12_STATE_OBJECT_TYPE_RAYTRACING_PIPELINE;
+		soDesc.NumSubobjects = index;
+		soDesc.pSubobjects = this->dynamicStates;
+
+		auto hr = dxWrapper->device->CreateStateObject(&soDesc, IID_PPV_ARGS(&wrapper->stateObject));
+		if (FAILED(hr))
+			throw Exception::FromError(Errors::BadPSOConstruction, nullptr, hr);
+
+		// Get All shader identifiers
+		for (int i = 0; i < wrapper->programs.size(); i++)
+		{
+			auto prog = wrapper->programs[i];
+			for (int j = 0; j < prog->wrapper->loadedShaderPrograms.size(); j++) {
+				auto shaderProgram = prog->wrapper->loadedShaderPrograms[j];
+
+				CComPtr<ID3D12StateObject> __so = wrapper->stateObject;
+				CComPtr<ID3D12StateObjectProperties> __soProp;
+				__so->QueryInterface<ID3D12StateObjectProperties>(&__soProp);
+
+				shaderProgram->cachedShaderIdentifier = __soProp->GetShaderIdentifier(shaderProgram->shaderHandle);
+			}
+		}
+	}
+
+#pragma region Program Implementation
+
+	// Creates a shader table buffer
+	DX_ShaderTable ShaderTable(wDevice* dxWrapper, int idSize, int stride, int count) {
+
+		DX_ShaderTable result = { };
+
+		D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_GENERIC_READ;
+
+		stride = (stride + (D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1)) & ~(D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT - 1);
+
+		D3D12_RESOURCE_DESC desc = { };
+		desc.Width = count * stride;
+		desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+		desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+		desc.Format = DXGI_FORMAT_UNKNOWN;
+		desc.Height = 1;
+		desc.Alignment = 0;
+		desc.DepthOrArraySize = 1;
+		desc.MipLevels = 1;
+		desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+		desc.SampleDesc = { 1, 0 };
+
+		D3D12_HEAP_PROPERTIES uploadProp = {};
+		uploadProp.Type = D3D12_HEAP_TYPE_UPLOAD;
+		uploadProp.CPUPageProperty = D3D12_CPU_PAGE_PROPERTY_UNKNOWN;
+		uploadProp.MemoryPoolPreference = D3D12_MEMORY_POOL_UNKNOWN;
+		uploadProp.VisibleNodeMask = 1;
+		uploadProp.CreationNodeMask = 1;
+
+		dxWrapper->device->CreateCommittedResource(&uploadProp,
+			D3D12_HEAP_FLAG_NONE,
+			&desc,
+			state,
+			nullptr,
+			IID_PPV_ARGS(&result.Buffer));
+
+		D3D12_RANGE read = {};
+		result.Buffer->Map(0, &read, &result.MappedData);
+		result.ShaderRecordSize = stride;
+		result.ShaderIDSize = idSize;
+		return result;
+	}
+
+	void RaytracingProgramBase::OnLoad(wDevice* dxWrapper)
+	{
+		wrapper = new wProgram();
+		wrapper->globals = new RaytracingBinder();
+		wrapper->raygen_locals = new RaytracingBinder();
+		wrapper->miss_locals = new RaytracingBinder();
+		wrapper->hitGroup_locals = new RaytracingBinder();
+
+		// load shaders and setup program settings
+		Setup();
+
+		Bindings(this->wrapper->globals);
+		RayGeneration_Bindings(this->wrapper->raygen_locals);
+		Miss_Bindings(this->wrapper->miss_locals);
+		HitGroup_Bindings(this->wrapper->hitGroup_locals);
+
+		// Create signatures
+		wrapper->globals->CreateSignature(
+			dxWrapper->device,
+			D3D12_ROOT_SIGNATURE_FLAG_NONE,
+			wrapper->globalSignature, wrapper->globalSignatureSize);
+
+		if (wrapper->raygen_locals->HasSomeBindings())
+			wrapper->raygen_locals->CreateSignature(
+				dxWrapper->device,
+				D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE,
+				wrapper->rayGen_Signature, wrapper->rayGen_SignatureSize);
+
+		if (wrapper->miss_locals->HasSomeBindings())
+			wrapper->miss_locals->CreateSignature(
+				dxWrapper->device,
+				D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE,
+				wrapper->miss_Signature, wrapper->miss_SignatureSize);
+
+		if (wrapper->hitGroup_locals->HasSomeBindings())
+			wrapper->hitGroup_locals->CreateSignature(
+				dxWrapper->device,
+				D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE,
+				wrapper->hitGroup_Signature, wrapper->hitGroup_SignatureSize);
+
+		// Create Shader Tables
+		UINT shaderIdentifierSize;
+		shaderIdentifierSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+		wrapper->raygen_shaderTable = ShaderTable(dxWrapper, shaderIdentifierSize, shaderIdentifierSize + wrapper->rayGen_SignatureSize, 1);
+		wrapper->miss_shaderTable = ShaderTable(dxWrapper, shaderIdentifierSize, shaderIdentifierSize + wrapper->miss_SignatureSize, wrapper->MaxMiss);
+		wrapper->group_shaderTable = ShaderTable(dxWrapper, shaderIdentifierSize, shaderIdentifierSize + wrapper->hitGroup_SignatureSize, wrapper->MaxGroups);
+	}
+
+#pragma endregion
+
+#pragma region Raytracing Pipeline Implementation
+
+	void RaytracingPipeline::OnSet(wCmdList* cmdWrapper) {
+		// Set the pipeline state object into the cmdList
+		wStateObject* wrapper = this->wrapper;
+
+		cmdWrapper->cmdList->SetPipelineState1(wrapper->stateObject);
+
+		ID3D12DescriptorHeap* heaps[] = {
+			wrapper->dxWrapper->gpu_csu->getInnerHeap(),
+			wrapper->dxWrapper->gpu_smp->getInnerHeap()
+		};
+
+		cmdWrapper->cmdList->SetDescriptorHeaps(2, heaps);
+	}
+
+	void RaytracingPipeline::OnDispatch(wCmdList* cmdWrapper) {
+	}
+
+#pragma endregion
+
+#pragma region RaytracingManager implementation
+	
+	void RaytracingManager::Set_Program(gObj<RaytracingProgramBase> program) {
+		w_cmdList->activeProgram = program->wrapper;
+		w_cmdList->cmdList->SetComputeRootSignature(program->wrapper->globalSignature);
+		program->wrapper->globals->__InternalBindingObject->BindToGPU(
+			true,
+			w_cmdList->w_device,
+			w_cmdList
+		);
+	}
+
+	void RaytracingManager::Set_RayGeneration(gObj<RayGenerationHandle> shader) {
+		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader);
+	}
+
+	void RaytracingManager::Set_Miss(gObj<MissHandle> shader, int index) {
+		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader, index);
+	}
+	void RaytracingManager::Set_HitGroup(gObj<HitGroupHandle> shader, int geometryIndex,
+		int rayContribution, int multiplier, int instanceContribution) {
+		int index = rayContribution + (geometryIndex * multiplier) + instanceContribution;
+		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader, index);
+	}
+
+	void RaytracingManager::Dispatch_Rays(int width, int height, int depth) {
+		auto currentBindings = w_cmdList->currentPipeline.Dynamic_Cast<RaytracingPipeline>();
+		auto currentProgram = w_cmdList->activeProgram;
+
+		if (!currentBindings)
+			return; // Exception?
+
+		D3D12_DISPATCH_RAYS_DESC d;
+		auto rtRayGenShaderTable = currentProgram->raygen_shaderTable;
+		auto rtMissShaderTable = currentProgram->miss_shaderTable;
+		auto rtHGShaderTable = currentProgram->group_shaderTable;
+
+		auto DispatchRays = [&](auto commandList, auto stateObject, auto* dispatchDesc)
+		{
+			dispatchDesc->HitGroupTable.StartAddress = rtHGShaderTable.Buffer->GetGPUVirtualAddress();
+			dispatchDesc->HitGroupTable.SizeInBytes = rtHGShaderTable.Buffer->GetDesc().Width;
+			dispatchDesc->HitGroupTable.StrideInBytes = rtHGShaderTable.ShaderRecordSize;
+
+			dispatchDesc->MissShaderTable.StartAddress = rtMissShaderTable.Buffer->GetGPUVirtualAddress();
+			dispatchDesc->MissShaderTable.SizeInBytes = rtMissShaderTable.Buffer->GetDesc().Width;
+			dispatchDesc->MissShaderTable.StrideInBytes = rtMissShaderTable.ShaderRecordSize;
+
+			dispatchDesc->RayGenerationShaderRecord.StartAddress = rtRayGenShaderTable.Buffer->GetGPUVirtualAddress();
+			dispatchDesc->RayGenerationShaderRecord.SizeInBytes = rtRayGenShaderTable.Buffer->GetDesc().Width;
+
+			dispatchDesc->Width = width;
+			dispatchDesc->Height = height;
+			dispatchDesc->Depth = depth;
+			commandList->DispatchRays(dispatchDesc);
+		};
+
+		D3D12_DISPATCH_RAYS_DESC dispatchDesc = {};
+		DispatchRays(w_cmdList->cmdList, currentBindings->wrapper->stateObject, &dispatchDesc);
+
+		D3D12_RESOURCE_BARRIER b = { };
+		b.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		b.UAV.pResource = nullptr;
+		w_cmdList->cmdList->ResourceBarrier(1, &b);
+	}
+
+	CollectionState GeometryCollection::State()
+	{
+		if (wrapper->gpuVersion.isNull())
+			return CollectionState::NotBuilt;
+
+		if (wrapper->gpuVersion->structuralVersion < wrapper->structuralVersion || !wrapper->allowsUpdating)
+			return CollectionState::NeedsRebuilt;
+
+		if (wrapper->gpuVersion->updatingVersion < wrapper->updatingVersion)
+			return CollectionState::NeedsUpdate;
+
+		return CollectionState::UpToDate;
+	}
+
+	void GeometryCollection::ForceState(CollectionState state) {
+		switch (state) {
+		case CollectionState::NeedsUpdate:
+			wrapper->updatingVersion++;
+			break;
+		case CollectionState::NeedsRebuilt:
+			wrapper->structuralVersion++;
+			break;
+		}
+	}
+
+	int GeometryCollection::Count() {
+		return wrapper->geometries->size();
+	}
+
+	void GeometryCollection::Clear() {
+		wrapper->geometries->reset();
+		wrapper->structuralVersion++;
+	}
+
+	void TriangleGeometryCollection::Load_Vertices(int geometryID, gObj<Buffer> newVertices) {
+		newVertices->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+		wrapper->geometries[geometryID].Triangles.VertexBuffer =
+		{
+			newVertices->GPUVirtualAddress() + wrapper->currentVertexOffset,
+			newVertices->ElementStride()
+		};
+		wrapper->updatingVersion++;
+	}
+
+	void TriangleGeometryCollection::Load_Transform(int geometryID, int transformIndex)
+	{
+		D3D12_RAYTRACING_GEOMETRY_DESC& desc = wrapper->geometries[geometryID];
+		if (transformIndex != -1 && desc.Triangles.Transform3x4 == 0 ||
+			transformIndex == -1 && desc.Triangles.Transform3x4 != 0)
+			wrapper->structuralVersion++; // transformation can not switch between null and not null
+		else
+			wrapper->updatingVersion++;
+
+		desc.Triangles.Transform3x4 =
+			transformIndex == -1 ? 0 : wrapper->boundTransforms->GPUVirtualAddress(transformIndex);
+	}
+
+	int TriangleGeometryCollection::Create_Geometry(
+		gObj<Buffer> vertices,
+		gObj<Buffer> indices,
+		int transformIndex)
+	{
+		vertices->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		indices->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
+		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+		desc.Triangles.VertexBuffer = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
+		{
+			vertices->GPUVirtualAddress() + wrapper->currentVertexOffset,
+			vertices->ElementStride()
+		};
+		desc.Triangles.VertexCount = vertices->ElementCount();
+		desc.Triangles.IndexBuffer = indices->GPUVirtualAddress();
+		desc.Triangles.IndexCount = indices->ElementCount();
+		desc.Triangles.IndexFormat = indices->ElementStride() == 2
+			? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+
+		if (transformIndex >= 0)
+			desc.Triangles.Transform3x4 = wrapper->boundTransforms->GPUVirtualAddress(transformIndex);
+		desc.Triangles.VertexFormat = wrapper->currentVertexFormat;
+
+		wrapper->geometries->add(desc);
+
+		wrapper->structuralVersion++;
+
+		return wrapper->geometries->size();
+	}
+
+	int TriangleGeometryCollection::Create_Geometry(
+		gObj<Buffer> vertices,
+		int transformIndex)
+	{
+		vertices->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
+		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
+
+		desc.Triangles.VertexBuffer = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
+		{
+			vertices->GPUVirtualAddress() +
+			wrapper->currentVertexOffset,
+			vertices->ElementStride()
+		};
+		desc.Triangles.VertexCount = vertices->ElementCount();
+
+		if (transformIndex >= 0)
+			desc.Triangles.Transform3x4 = wrapper->boundTransforms->GPUVirtualAddress(transformIndex);
+
+		desc.Triangles.VertexFormat = wrapper->currentVertexFormat;
+
+		wrapper->geometries->add(desc);
+		wrapper->structuralVersion++;
+		return wrapper->geometries->size();
+	}
+
+	void TriangleGeometryCollection::__SetInputLayout(VertexElement* elements, int count)
+	{
+		int vertexOffset = 0;
+		DXGI_FORMAT vertexFormat = DXGI_FORMAT_UNKNOWN;
+		for (int i = 0; i < count; i++)
+		{
+			// Position was found in layout
+			if (elements[i].Semantic == VertexElementSemantic::Position)
+			{
+				vertexFormat = elements[i].Format();
+				break;
+			}
+
+			vertexOffset += elements[i].Components * 4;
+		}
+		wrapper->currentVertexFormat = vertexFormat;
+		wrapper->currentVertexOffset = vertexOffset;
+	}
+
+	void TriangleGeometryCollection::Set_Transforms(gObj<Buffer> transforms)
+	{
+		if (transforms != nullptr)
+			transforms->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+
+		wrapper->boundTransforms = transforms;
+	}
+
+	int ProceduralGeometryCollection::Create_Geometry(gObj<Buffer> boxes)
+	{
+		boxes->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
+		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+		//desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
+		desc.AABBs.AABBCount = boxes->ElementCount();
+		desc.AABBs.AABBs = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
+		{
+			boxes->GPUVirtualAddress(),
+			sizeof(D3D12_RAYTRACING_AABB)
+		};
+		wrapper->geometries->add(desc);
+		wrapper->structuralVersion++;
+		return wrapper->geometries->size();
+	}
+
+	void ProceduralGeometryCollection::Load_Boxes(int geometryID, gObj<Buffer> newBoxes)
+	{
+		D3D12_RAYTRACING_GEOMETRY_DESC& desc = wrapper->geometries[geometryID];
+		
+		if (desc.AABBs.AABBCount != newBoxes->ElementCount()) // requires a structural update
+			wrapper->structuralVersion++;
+		else
+			wrapper->updatingVersion++;
+
+		desc.AABBs.AABBs = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
+		{
+			newBoxes->GPUVirtualAddress(),
+			sizeof(D3D12_RAYTRACING_AABB)
+		};
+	}
+
+	void FillMat4x3(float(&dst)[3][4], float4x3 transform) {
+		dst[0][0] = transform._m00;
+		dst[0][1] = transform._m10;
+		dst[0][2] = transform._m20;
+		dst[0][3] = transform._m30;
+		dst[1][0] = transform._m01;
+		dst[1][1] = transform._m11;
+		dst[1][2] = transform._m21;
+		dst[1][3] = transform._m31;
+		dst[2][0] = transform._m02;
+		dst[2][1] = transform._m12;
+		dst[2][2] = transform._m22;
+		dst[2][3] = transform._m32;
+	}
+
+	void InstanceCollection::Load_InstanceGeometry(int instance, gObj<GeometryCollection> geometries)
+	{
+		if (geometries->wrapper->gpuVersion.isNull())
+			throw Exception::FromError(Errors::Invalid_Operation, "Geometry collection should be loaded on the GPU first.");
+
+		wrapper->usedGeometries[instance] = geometries;
+
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
+		desc.AccelerationStructure = geometries->wrapper->gpuVersion->bottomLevelAccDS->GetGPUVirtualAddress();
+		wrapper->updatingVersion++;
+	}
+
+	void InstanceCollection::Load_InstanceMask(int instance, UINT mask)
+	{
+		D3D12_RAYTRACING_INSTANCE_DESC& desc =  wrapper->instances[instance];
+		desc.InstanceMask = mask;
+		wrapper->updatingVersion++;
+	}
+
+	void InstanceCollection::Load_InstanceContribution(int instance, int instanceContribution)
+	{
+
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
+		desc.InstanceContributionToHitGroupIndex = instanceContribution;
+		wrapper->updatingVersion++;
+	}
+
+	void InstanceCollection::Load_InstanceID(int instance, UINT instanceID)
+	{
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
+		desc.InstanceID = instanceID;
+		wrapper->updatingVersion++;
+	}
+
+	void InstanceCollection::Load_InstanceTransform(int instance, float4x3 transform)
+	{
+
+		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
+		FillMat4x3(desc.Transform, transform);
+		wrapper->updatingVersion++;
+	}
+
+	int InstanceCollection::Create_Instance(gObj<GeometryCollection> geometries, UINT mask, int instanceContribution, UINT instanceID, float4x3 transform)
+	{
+		if (geometries->wrapper->gpuVersion.isNull())
+			throw Exception::FromError(Errors::Invalid_Operation, "Geometry collection should be loaded on the GPU first.");
+
+		wrapper->usedGeometries->add(geometries);
+		wrapper->structuralVersion++;
+
+		D3D12_RAYTRACING_INSTANCE_DESC d{ };
+		d.Flags = D3D12_RAYTRACING_INSTANCE_FLAGS::D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
+		FillMat4x3(d.Transform, transform);
+		d.InstanceMask = mask;
+		d.InstanceContributionToHitGroupIndex = instanceContribution;
+		d.AccelerationStructure = geometries->wrapper->gpuVersion->bottomLevelAccDS->GetGPUVirtualAddress();
+		int index = wrapper->instances->size();
+		d.InstanceID = instanceID == INTSAFE_UINT_MAX ? index : instanceID;
+		wrapper->instances->add(d);
+		return wrapper->instances->size();
+	}
+
+	int InstanceCollection::Count()
+	{
+		return wrapper->instances->size();
+	}
+
+	CollectionState InstanceCollection::State()
+	{
+		if (wrapper->gpuVersion.isNull())
+			return CollectionState::NotBuilt;
+
+		if (wrapper->gpuVersion->structuralVersion < wrapper->structuralVersion || !wrapper->allowsUpdating)
+			return CollectionState::NeedsRebuilt;
+
+		if (wrapper->gpuVersion->updatingVersion < wrapper->updatingVersion)
+			return CollectionState::NeedsUpdate;
+
+		return CollectionState::UpToDate;
+	}
+
+	void InstanceCollection::ForceState(CollectionState state) {
+		switch (state) {
+		case CollectionState::NeedsUpdate:
+			wrapper->updatingVersion++;
+			break;
+		case CollectionState::NeedsRebuilt:
+			wrapper->structuralVersion++;
+			break;
+		}
+	}
+
+	void InstanceCollection::Clear()
+	{
+		wrapper->instances->reset();
+		wrapper->usedGeometries->reset();
+		wrapper->structuralVersion++;
+	}
+
+	gObj<InstanceCollection> RaytracingManager::Create_Intances() {
+		DX_InstanceCollectionWrapper* wrapper = new DX_InstanceCollectionWrapper();
+		InstanceCollection* result = new InstanceCollection();
+		result->wrapper = wrapper;
+		return result;
+	}
+
+	gObj<TriangleGeometryCollection> RaytracingManager::Create_TriangleGeometries()
+	{
+		TriangleGeometryCollection* triangles = new TriangleGeometryCollection();
+		triangles->wrapper = new DX_GeometryCollectionWrapper();
+		triangles->wrapper->cmdList = w_cmdList->cmdList;
+		return triangles;
+	}
+
+	gObj<ProceduralGeometryCollection> RaytracingManager::Create_ProceduralGeometries()
+	{
+		ProceduralGeometryCollection* geometries = new ProceduralGeometryCollection();
+		geometries->wrapper = new DX_GeometryCollectionWrapper();
+		geometries->wrapper->cmdList = w_cmdList->cmdList;
+		return geometries;
+	}
+
+	gObj<GeometryCollection> RaytracingManager::Attach(gObj<GeometryCollection> collection) {
+		collection->wrapper->cmdList = w_cmdList->cmdList;
+		return collection;
+	}
+
+
+	void RaytracingManager::Load_Geometry(gObj<GeometryCollection> geometries, bool allowUpdate, bool preferFastRaycasting)
+	{
+		if (geometries->State() == CollectionState::UpToDate)
+			return;
+
+		gObj<DX_BakedGeometry> baked;
+
+		if (geometries->State() == CollectionState::NotBuilt)
+			baked = new DX_BakedGeometry();
+		else
+			baked = geometries->wrapper->gpuVersion;
+
+		auto geometryCollection = geometries->wrapper;
+		auto dxWrapper = w_cmdList->w_device;
+
+		// creates the bottom level acc ds and emulated gpu pointer if necessary
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags =
+			geometries->State() == CollectionState::NeedsUpdate ?
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
+			(preferFastRaycasting ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD)
+			| (allowUpdate ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE);
+
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+		inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		inputs.Flags = buildFlags;
+		inputs.NumDescs = geometryCollection->geometries->size();
+		inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+		inputs.pGeometryDescs = &geometryCollection->geometries->first();
+
+		DX_Resource scratchBuffer;
+		DX_Resource finalBuffer;
+
+		if (geometries->State() == CollectionState::NeedsUpdate)
+		{ // can use same old buffers
+			scratchBuffer = geometries->wrapper->gpuVersion->scratchBottomLevelAccDS;
+			finalBuffer = geometries->wrapper->gpuVersion->bottomLevelAccDS;
+		}
+		else
+		{ // need to consider creating a new buffer
+
+			// Compute sizes for the new buffers...
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+			D3D12_RESOURCE_STATES initialResourceState;
+
+			dxWrapper->device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+			initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+
+			if (geometries->State() == CollectionState::NotBuilt ||
+				geometries->wrapper->gpuVersion->scratchBottomLevelAccDS->GetDesc().Width < prebuildInfo.ScratchDataSizeInBytes)
+			{ // needs to create new buffers
+				D3D12_RESOURCE_DESC desc = {};
+				desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+				desc.Format = DXGI_FORMAT_UNKNOWN;
+				desc.Width = prebuildInfo.ScratchDataSizeInBytes;
+				desc.Height = 1;
+				desc.MipLevels = 1;
+				desc.DepthOrArraySize = 1;
+				desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+				desc.SampleDesc = { 1, 0 };
+				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+				auto scraftV = dxWrapper->CreateResource(desc, 1, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				scratchBuffer = scraftV->resource;
+
+				desc.Width = prebuildInfo.ResultDataMaxSizeInBytes;
+
+				auto finalV = dxWrapper->CreateResource(desc, 1, 0, initialResourceState);
+				finalBuffer = finalV->resource;
+			}
+			else
+			{ // can use same old buffers because there is sufficent space
+				scratchBuffer = geometries->wrapper->gpuVersion->scratchBottomLevelAccDS;
+				finalBuffer = geometries->wrapper->gpuVersion->bottomLevelAccDS;
+			}
+		}
+
+		// Bottom Level Acceleration Structure desc
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC bottomLevelBuildDesc = {};
+		{
+			bottomLevelBuildDesc.Inputs = inputs;
+			bottomLevelBuildDesc.ScratchAccelerationStructureData = scratchBuffer->GetGPUVirtualAddress();
+			bottomLevelBuildDesc.DestAccelerationStructureData = finalBuffer->GetGPUVirtualAddress();
+		}
+		if (geometries->State() == CollectionState::NeedsUpdate)
+			bottomLevelBuildDesc.SourceAccelerationStructureData = finalBuffer->GetGPUVirtualAddress();
+
+		w_cmdList->cmdList->BuildRaytracingAccelerationStructure(&bottomLevelBuildDesc, 0, nullptr);
+
+		// Add barrier to wait for ADS construction
+		D3D12_RESOURCE_BARRIER barrier = {};
+		barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		barrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		barrier.UAV.pResource = finalBuffer;
+		w_cmdList->cmdList->ResourceBarrier(1, &barrier);
+
+		baked->bottomLevelAccDS = finalBuffer;
+		baked->scratchBottomLevelAccDS = scratchBuffer;
+		baked->updatingVersion = geometries->wrapper->updatingVersion;
+		baked->structuralVersion = geometries->wrapper->structuralVersion;
+		geometries->wrapper->allowsUpdating |= allowUpdate;
+		geometries->wrapper->gpuVersion = baked;
+	}
+
+	void RaytracingManager::Load_Scene(gObj<InstanceCollection> instances, bool allowUpdate, bool preferFastRaycasting)
+	{
+		if (instances->State() == CollectionState::UpToDate)
+			return;
+
+		auto instanceCollection = instances->wrapper;
+		auto dxWrapper = w_cmdList->w_device;
+
+		// Bake scene using instance buffer and generate the top level DS
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS buildFlags =
+			instances->State() == CollectionState::NeedsUpdate ?
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
+			(allowUpdate ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE) |
+			(preferFastRaycasting ? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE : D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD);
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
+		inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		inputs.Flags = buildFlags;
+		inputs.NumDescs = instanceCollection->instances->size();
+		inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+
+		DX_Resource scratchBuffer;
+		DX_Resource finalBuffer;
+		DX_Resource instanceBuffer;
+		void* instanceBufferMap;
+
+		int instanceBufferWidth = instanceCollection->instances->size() * sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+
+		if (instances->State() == CollectionState::NeedsUpdate)
+		{ // use the same buffers to update
+			scratchBuffer = instanceCollection->gpuVersion->scratchBuffer;
+			finalBuffer = instanceCollection->gpuVersion->topLevelAccDS;
+			instanceBuffer = instanceCollection->gpuVersion->instancesBuffer;
+			instanceBufferMap = instanceCollection->gpuVersion->instancesBufferMap;
+		}
+		else // consider creating new buffers if necessary.
+		{
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO prebuildInfo = {};
+			D3D12_RESOURCE_STATES initialResourceState;
+
+
+			dxWrapper->device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &prebuildInfo);
+			initialResourceState = D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE;
+
+			if (instances->State() == CollectionState::NotBuilt ||
+				instanceCollection->gpuVersion->scratchBuffer->GetDesc().Width < prebuildInfo.ScratchDataSizeInBytes)
+			{ // needs more space than previously used
+				D3D12_RESOURCE_DESC desc = {};
+				desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+				desc.Format = DXGI_FORMAT_UNKNOWN;
+				desc.Height = 1;
+				desc.MipLevels = 1;
+				desc.DepthOrArraySize = 1;
+				desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+				desc.SampleDesc = { 1, 0 };
+				desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+				// Creating scraft memory for ADS construction
+				desc.Width = prebuildInfo.ScratchDataSizeInBytes;
+				auto scraftV = dxWrapper->CreateResource(desc, 1, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+				scratchBuffer = scraftV->resource;
+
+				// Creating top level ADS
+				desc.Width = prebuildInfo.ResultDataMaxSizeInBytes;
+				auto finalV = dxWrapper->CreateResource(desc, 1, 0, initialResourceState);
+				finalBuffer = finalV->resource;
+
+				// Creating instance buffer
+				desc.Width = instanceBufferWidth;
+				desc.Flags = D3D12_RESOURCE_FLAG_NONE;
+				auto instanceV = dxWrapper->CreateResource(desc, 1, 0, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, CPUAccessibility::Write);
+				instanceBuffer = instanceV->resource;
+
+				D3D12_RANGE range = {};
+				instanceBuffer->Map(0, &range, &instanceBufferMap); // Permanent map of instance buffer
+			}
+			else
+			{ // can reuse same space
+				scratchBuffer = instanceCollection->gpuVersion->scratchBuffer;
+				finalBuffer = instanceCollection->gpuVersion->topLevelAccDS;
+				instanceBuffer = instanceCollection->gpuVersion->instancesBuffer;
+				instanceBufferMap = instanceCollection->gpuVersion->instancesBufferMap;
+			}
+		}
+
+		// Update instance buffer with instances
+		memcpy(instanceBufferMap, (void*)&instanceCollection->instances->first(), instanceBufferWidth);
+
+		// Build acc structure
+
+		// Top Level Acceleration Structure desc
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC topLevelBuildDesc = {};
+		{
+			inputs.InstanceDescs = instanceBuffer->GetGPUVirtualAddress();
+			topLevelBuildDesc.Inputs = inputs;
+			topLevelBuildDesc.ScratchAccelerationStructureData = scratchBuffer->GetGPUVirtualAddress();
+			topLevelBuildDesc.DestAccelerationStructureData = finalBuffer->GetGPUVirtualAddress();
+		}
+		if (instances->State() == CollectionState::NeedsUpdate)
+			topLevelBuildDesc.SourceAccelerationStructureData = finalBuffer->GetGPUVirtualAddress();
+
+		w_cmdList->cmdList->BuildRaytracingAccelerationStructure(&topLevelBuildDesc, 0, nullptr);
+
+		gObj<DX_BakedScene> baked;
+		if (instances->State() == CollectionState::NotBuilt)
+			baked = new DX_BakedScene();
+		else
+			baked = instanceCollection->gpuVersion;
+
+		baked->scratchBuffer = scratchBuffer;
+		baked->topLevelAccDS = finalBuffer;
+		baked->instancesBuffer = instanceBuffer;
+		baked->instancesBufferMap = instanceBufferMap;
+
+		instances->wrapper->allowsUpdating |= allowUpdate;
+
+		baked->updatingVersion = instances->wrapper->updatingVersion;
+		baked->structuralVersion = instances->wrapper->structuralVersion;
+		instances->wrapper->gpuVersion = baked;
+	}
+
+#pragma endregion
 
 #pragma endregion
 
@@ -1313,7 +2484,7 @@ namespace dx4xb {
 		return fp.Depth * fp.Height * fp.RowPitch;
 	}
 
-	int dx4xb::ResourceView::ElementStride() const
+	uint dx4xb::ResourceView::ElementStride() const
 	{
 		return w_view->elementStride;
 	}
@@ -2661,7 +3832,7 @@ namespace dx4xb {
 		return device->RenderTargets[device->scheduler->CurrentFrameIndex];
 	}
 
-	wResource* DeviceManager::CreateResource(
+	wResource* wDevice::CreateResource(
 		const D3D12_RESOURCE_DESC& desc,
 		int elementStride,
 		int elementCount,
@@ -2696,16 +3867,28 @@ namespace dx4xb {
 		}
 
 		DX_Resource resource;
-		auto hr = device->device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &desc, initialState, clearing,
+		auto hr = device->CreateCommittedResource(&heapProp, D3D12_HEAP_FLAG_NONE, &desc, initialState, clearing,
 			IID_PPV_ARGS(&resource));
 
 		if (FAILED(hr))
 		{
-			auto _hr = device->device->GetDeviceRemovedReason();
+			auto _hr = device->GetDeviceRemovedReason();
 			throw Exception::FromError(Errors::RunOutOfMemory, nullptr, _hr);
 		}
 
-		return new wResource(device->device, resource, desc, elementStride, elementCount, initialState, accessibility);
+		return new wResource(device, resource, desc, elementStride, elementCount, initialState, accessibility);
+	}
+
+	wResource* DeviceManager::CreateResource(
+		const D3D12_RESOURCE_DESC& desc,
+		int elementStride,
+		int elementCount,
+		D3D12_RESOURCE_STATES initialState,
+		D3D12_CLEAR_VALUE* clearing,
+		CPUAccessibility accessibility
+	) {
+		return device->CreateResource(desc, elementStride, elementCount,
+			initialState, clearing, accessibility);
 	}
 
 	gObj<Buffer> DeviceManager::Create_Buffer_CB(int elementStride, bool dynamic) 

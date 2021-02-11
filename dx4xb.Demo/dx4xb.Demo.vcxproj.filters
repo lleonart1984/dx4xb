@@ -69,6 +69,9 @@
     <ClInclude Include="Techniques\Examples\DepthComplexityTechnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\Examples\BasicRaycastSample.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dx4xb.Demo.cpp">
@@ -112,5 +115,6 @@
     <FxCompile Include="Techniques\Examples\Basic_VS.hlsl" />
     <FxCompile Include="Techniques\Examples\Basic_PS.hlsl" />
     <FxCompile Include="Techniques\Examples\Counting_PS.hlsl" />
+    <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
   </ItemGroup>
 </Project>

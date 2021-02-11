@@ -175,7 +175,7 @@ namespace dx4xb {
 		wDevice* w_device;
 		DX_CommandList cmdList = nullptr;
 		gObj<Pipeline> currentPipeline = nullptr;
-		gObj<wProgram> activeProgram = nullptr;
+		wProgram* activeProgram = nullptr;
 		list<D3D12_CPU_DESCRIPTOR_HANDLE> srcDescriptors = {};
 		list<D3D12_CPU_DESCRIPTOR_HANDLE> dstDescriptors = {};
 		list<unsigned int> dstDescriptorRangeLengths = {};
@@ -728,6 +728,15 @@ namespace dx4xb {
 
 		gObj<Texture2D>* RenderTargets;
 		D3D12_CPU_DESCRIPTOR_HANDLE* RenderTargetsRTV;
+
+		wResource* CreateResource(
+			const D3D12_RESOURCE_DESC& desc,
+			int elementStride,
+			int elementCount,
+			D3D12_RESOURCE_STATES initialState,
+			D3D12_CLEAR_VALUE* clearing = nullptr,
+			CPUAccessibility accessibility = CPUAccessibility::None
+		);
 
 #pragma region Descriptor Heaps
 
