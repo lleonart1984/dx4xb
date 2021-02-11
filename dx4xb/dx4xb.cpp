@@ -1036,6 +1036,22 @@ namespace dx4xb {
 		w_cmdList->cmdList->ClearDepthStencilView(depthStencil->w_view->getDSVHandle(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, depth, stencil, 0, nullptr);
 	}
 
+	void dx4xb::CopyManager::Clear_UAV(gObj<ResourceView> uav, const unsigned int values[4])
+	{
+		wResource* resourceWrapper = uav->w_resource;
+		wResourceView* view = uav->w_view;
+		resourceWrapper->AddUAVBarrier(w_cmdList->cmdList);
+		long gpuHandleIndex = w_cmdList->w_device->gpu_csu->AllocateInFrame(1);
+		auto cpuHandleAtVisibleHeap = w_cmdList->w_device->gpu_csu->getCPUVersion(gpuHandleIndex);
+		auto gpuHandle = w_cmdList->w_device->gpu_csu->getGPUVersion(gpuHandleIndex);
+		auto cpuHandle = view->getUAVHandle();
+		resourceWrapper->device->CopyDescriptorsSimple(1, cpuHandleAtVisibleHeap, cpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		w_cmdList->cmdList->ClearUnorderedAccessViewUint(
+			gpuHandle,
+			cpuHandle,
+			resourceWrapper->resource, values, 0, nullptr);
+	}
+
 	void dx4xb::CopyManager::Load_AllToGPU(gObj<ResourceView> resource)
 	{
 		resource->w_resource->UpdateResourceFromMapped(this->w_cmdList->cmdList, resource->w_view);

@@ -15614,7 +15614,7 @@ namespace dx4xb {
 		// Creates a bidimensional texture to be used as a RWTexture2D in a shader.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture2D> Create_Texture2D_UAV(int width, int height, int mips = 0, int arrayLength = 1) {
+		gObj<Texture2D> Create_Texture2D_UAV(int width, int height, int mips = 1, int arrayLength = 1) {
 			return Create_Texture2D_UAV(Formats<T>::Value, width, height, mips, arrayLength);
 		}
 

@@ -10,6 +10,7 @@
 #include "Techniques/Examples/ClearRTSampleTechnique.h"
 #include "Techniques/Examples/DemoTechnique.h"
 #include "Techniques/Examples/BasicSceneTechnique.h"
+#include "Techniques/Examples/DepthComplexityTechnique.h"
 
 using namespace dx4xb;
 
@@ -78,7 +79,7 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<BasicSceneTechnique> technique = new BasicSceneTechnique();
+	gObj<DepthComplexityTechnique> technique = new DepthComplexityTechnique();
 	
 	gObj<SceneManager> scene = new BunnyScene();
 	scene->SetupScene();

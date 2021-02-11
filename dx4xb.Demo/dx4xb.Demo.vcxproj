@@ -169,6 +169,7 @@
     <ClInclude Include="Techniques\Examples\BasicSceneTechnique.h" />
     <ClInclude Include="Techniques\Examples\ClearRTSampleTechnique.h" />
     <ClInclude Include="Techniques\Examples\DemoTechnique.h" />
+    <ClInclude Include="Techniques\Examples\DepthComplexityTechnique.h" />
     <ClInclude Include="Techniques\Examples\gui_traits.h" />
   </ItemGroup>
   <ItemGroup>
@@ -204,6 +205,12 @@
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Vertex</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\Examples\Counting_PS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Pixel</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
     </FxCompile>
     <FxCompile Include="Techniques\Examples\Demo_PS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
