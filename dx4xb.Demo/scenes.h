@@ -481,7 +481,7 @@ public:
 	void SetupScene() {
 
 		camera.Position = float3(0, 0, 1.6);
-		lights[0].Direction = normalize(float3(1, 1, 1));
+		lights[0].Direction = normalize(float3(1, 1, -1));
 		lights[0].Intensity = float3(5, 5, 5) * 2;
 
 		dx4xb::string desktopPath = desktop_directory();
@@ -499,12 +499,12 @@ public:
 		);
 		scene->appendScene(bunnyScene);
 
-		setGlassMaterial(0, 1, 1 / 1); // glass bunny
+		setGlassMaterial(0, 1, 1 / 1.5); // glass bunny
 		//setMirrorMaterial(2, 0.3); // reflective plate
 
 		scene->VolumeMaterials().Data[0] = VolumeMaterial{
 			float3(500, 500, 500) * 0.25, // sigma
-			float3(0.999, 0.99995, 0.999),
+			float3(0.99, 0.995, 0.999),
 			float3(0.9, 0.9, 0.9)
 		};
 

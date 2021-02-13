@@ -53,25 +53,25 @@ public:
 		}
 
 		void Bindings(gObj<GraphicsBinder> binder) {
-			binder->Bindings_OnSet();
+			binder->OnSet();
 			{
-				binder->Bindings_PixelShader();
+				binder->PixelShader();
 				binder->SMP_Static(0, Sampler::Linear());
 				binder->RTV(0, RenderTarget);
 				binder->DSV(DepthBuffer);
 					  
-				binder->Bindings_VertexShader();
+				binder->VertexShader();
 				binder->SRV(0, InstanceTransforms);
 				binder->SRV(1, GeometryTransforms);
 				binder->CBV(0, Camera);
 			}
 
-			binder->Bindings_OnDispatch();
+			binder->OnDispatch();
 			{
-				binder->Bindings_VertexShader();
+				binder->VertexShader();
 				binder->CBV(1, ObjectInfo);
 					  
-				binder->Bindings_PixelShader();
+				binder->PixelShader();
 				binder->SRV(0, Texture);
 			}
 		}
@@ -84,22 +84,22 @@ public:
 		auto desc = scene->getScene();
 
 		// Allocate Memory for scene elements
-		VertexBuffer = Create_Buffer_VB<SceneVertex>(desc->Vertices().Count);
-		IndexBuffer = Create_Buffer_IB<int>(desc->Indices().Count);
-		Camera = Create_Buffer_CB<CameraCB>();
-		Lighting = Create_Buffer_CB<LightingCB>();
-		GeometryTransforms = Create_Buffer_SRV<float4x3>(desc->getTransformsBuffer().Count);
-		InstanceTransforms = Create_Buffer_SRV<float4x4>(desc->Instances().Count);
+		VertexBuffer = CreateBufferVB<SceneVertex>(desc->Vertices().Count);
+		IndexBuffer = CreateBufferIB<int>(desc->Indices().Count);
+		Camera = CreateBufferCB<CameraCB>();
+		Lighting = CreateBufferCB<LightingCB>();
+		GeometryTransforms = CreateBufferSRV<float4x3>(desc->getTransformsBuffer().Count);
+		InstanceTransforms = CreateBufferSRV<float4x4>(desc->Instances().Count);
 		Textures = new gObj<Texture2D>[desc->getTextures().Count];
 		TextureCount = desc->getTextures().Count;
 		for (int i = 0; i < TextureCount; i++)
-			Textures[i] = Create_Texture2D_SRV(desc->getTextures().Data[i]);
+			Textures[i] = LoadTexture2D(desc->getTextures().Data[i]);
 		
 		Load(pipeline);
 		pipeline->Camera = Camera;
 		pipeline->GeometryTransforms = GeometryTransforms;
 		pipeline->InstanceTransforms = InstanceTransforms;
-		pipeline->DepthBuffer = Create_Texture2D_DSV(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		pipeline->DepthBuffer = CreateTexture2DDSV(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
 		Execute_OnGPU(UpdateDirtyElements);
 	}
@@ -111,45 +111,45 @@ public:
 
 		if (+(elements & SceneElement::Vertices))
 		{
-			VertexBuffer->Write_Ptr(desc->Vertices().Data);
-			manager->Load_AllToGPU(VertexBuffer);
+			VertexBuffer->Write(desc->Vertices().Data);
+			manager->ToGPU(VertexBuffer);
 		}
 
 		if (+(elements & SceneElement::Indices))
 		{
-			IndexBuffer->Write_Ptr(desc->Indices().Data);
-			manager->Load_AllToGPU(IndexBuffer);
+			IndexBuffer->Write(desc->Indices().Data);
+			manager->ToGPU(IndexBuffer);
 		}
 
 		if (+(elements & SceneElement::Camera))
 		{
 			float4x4 proj, view;
 			scene->getCamera().GetMatrices(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), view, proj);
-			Camera->Write_Value(CameraCB{
+			Camera->Write(CameraCB{
 					proj,
 					view
 				});
-			manager->Load_AllToGPU(Camera);
+			manager->ToGPU(Camera);
 		}
 
 		if (+(elements & SceneElement::Lights))
 		{
-			Lighting->Write_Value(LightingCB{
+			Lighting->Write(LightingCB{
 					scene->getMainLight().Position,
 					scene->getMainLight().Intensity
 				});
-			manager->Load_AllToGPU(Lighting);
+			manager->ToGPU(Lighting);
 		}
 
 		if (+(elements & SceneElement::GeometryTransforms))
 		{
-			GeometryTransforms->Write_Ptr(desc->getTransformsBuffer().Data);
-			manager->Load_AllToGPU(GeometryTransforms);
+			GeometryTransforms->Write(desc->getTransformsBuffer().Data);
+			manager->ToGPU(GeometryTransforms);
 		}
 
 		if (+(elements & SceneElement::Textures)) {
 			for (int i = 0; i < TextureCount; i++)
-				manager->Load_AllToGPU(Textures[i]);
+				manager->ToGPU(Textures[i]);
 		}
 
 		if (+(elements & SceneElement::InstanceTransforms))
@@ -158,8 +158,8 @@ public:
 			for (int i = 0; i < desc->Instances().Count; i++)
 				transforms[i] = desc->Instances().Data[i].Transform;
 
-			InstanceTransforms->Write_Ptr(transforms);
-			manager->Load_AllToGPU(InstanceTransforms);
+			InstanceTransforms->Write(transforms);
+			manager->ToGPU(InstanceTransforms);
 			delete[] transforms;
 		}
 	}
@@ -174,12 +174,12 @@ public:
 
 	void DrawScene(gObj<GraphicsManager> manager) {
 		pipeline->RenderTarget = CurrentRenderTarget();
-		manager->Set_Pipeline(pipeline);
-		manager->Set_IndexBuffer(IndexBuffer);
-		manager->Set_Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		manager->SetPipeline(pipeline);
+		manager->IndexBuffer(IndexBuffer);
+		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
-		manager->Clear_RT(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
-		manager->Clear_Depth(pipeline->DepthBuffer);
+		manager->ClearRenderTarget(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
+		manager->ClearDepth(pipeline->DepthBuffer);
 
 		auto desc = scene->getScene();
 
@@ -191,7 +191,7 @@ public:
 				pipeline->ObjectInfo.TransformIndex = geometry.TransformIndex;
 				pipeline->ObjectInfo.MaterialIndex = geometry.MaterialIndex;
 
-				manager->Set_VertexBuffer(VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount));
+				manager->VertexBuffer(VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount));
 
 				pipeline->Texture = nullptr;
 				if (geometry.MaterialIndex != -1)
@@ -200,7 +200,7 @@ public:
 					if (textureIndex != -1)
 						pipeline->Texture = Textures[textureIndex];
 				}
-				manager->Dispatch_IndexedTriangles(geometry.IndexCount, geometry.StartIndex);
+				manager->DrawIndexedTriangles(geometry.IndexCount, geometry.StartIndex);
 			}
 		}
 	}

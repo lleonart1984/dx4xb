@@ -12,6 +12,8 @@
 #include "Techniques/Examples/BasicSceneTechnique.h"
 #include "Techniques/Examples/DepthComplexityTechnique.h"
 #include "Techniques/Examples/BasicRaycastSample.h"
+#include "Techniques/Pathtracing/PathtracingTechnique.h"
+#include "Techniques/Pathtracing/NEEPathtracingTechnique.h"
 
 using namespace dx4xb;
 
@@ -80,9 +82,9 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<BasicRaycastSample> technique = new BasicRaycastSample();
+	gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
 	
-	gObj<SceneManager> scene = new BunnyScene();
+	gObj<SceneManager> scene = new LucyAndDrago2();
 	scene->SetupScene();
 
 	if (technique.Dynamic_Cast<IManageScene>())
@@ -118,7 +120,7 @@ int main(int, char**)
 		}
 #endif
 		
-		presenter->Dispatch_Technique(technique);
+		presenter->ExecuteTechnique(technique);
 
 #ifdef USE_GUI
 

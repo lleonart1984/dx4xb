@@ -155,6 +155,7 @@
   <ItemGroup>
     <ClInclude Include="dx4xb.Demo.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="gui_traits.h" />
     <ClInclude Include="ImGui\imconfig.h" />
     <ClInclude Include="ImGui\imgui.h" />
     <ClInclude Include="ImGui\imgui_impl_dx12.h" />
@@ -171,7 +172,20 @@
     <ClInclude Include="Techniques\Examples\ClearRTSampleTechnique.h" />
     <ClInclude Include="Techniques\Examples\DemoTechnique.h" />
     <ClInclude Include="Techniques\Examples\DepthComplexityTechnique.h" />
-    <ClInclude Include="Techniques\Examples\gui_traits.h" />
+    <ClInclude Include="Techniques\Pathtracing\NEEPathtracingTechnique.h" />
+    <ClInclude Include="Techniques\Pathtracing\PathtracingBase.h" />
+    <ClInclude Include="Techniques\Pathtracing\PathtracingCommon_RT.h" />
+    <ClInclude Include="Techniques\Pathtracing\PathtracingTechnique.h" />
+    <ClInclude Include="Techniques\Tools\CommonComplexity.h" />
+    <ClInclude Include="Techniques\Tools\CommonEnvironment.h" />
+    <ClInclude Include="Techniques\Tools\CommonPT.h" />
+    <ClInclude Include="Techniques\Tools\CommonRT.h" />
+    <ClInclude Include="Techniques\Tools\Definitions.h" />
+    <ClInclude Include="Techniques\Tools\Distances.h" />
+    <ClInclude Include="Techniques\Tools\HGPhaseFunction.h" />
+    <ClInclude Include="Techniques\Tools\Parameters.h" />
+    <ClInclude Include="Techniques\Tools\Randoms.h" />
+    <ClInclude Include="Techniques\Tools\Scattering.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dx4xb.Demo.cpp" />
@@ -181,6 +195,7 @@
     <ClCompile Include="ImGui\imgui_impl_dx12.cpp" />
     <ClCompile Include="ImGui\imgui_impl_win32.cpp" />
     <ClCompile Include="ImGui\imgui_widgets.cpp" />
+    <ClCompile Include="Techniques\Pathtracing\PathtracingTechnique.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="dx4xb.Demo.rc" />
@@ -238,6 +253,22 @@
       </EntryPointName>
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </EntryPointName>
+    </FxCompile>
+    <FxCompile Include="Techniques\Pathtracing\NEEPathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\Pathtracing\Pathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
     </FxCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

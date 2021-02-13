@@ -60,9 +60,6 @@
     <ClInclude Include="Techniques\Examples\BasicSceneTechnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Techniques\Examples\gui_traits.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="scenes.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -70,6 +67,51 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Techniques\Examples\BasicRaycastSample.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonComplexity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonEnvironment.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonPT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonRT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Definitions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Distances.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\HGPhaseFunction.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Parameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Randoms.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Scattering.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\NEEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gui_traits.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingCommon_RT.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -95,6 +137,9 @@
     <ClCompile Include="ImGui\imgui_widgets.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Techniques\Pathtracing\PathtracingTechnique.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="dx4xb.Demo.rc">
@@ -116,5 +161,7 @@
     <FxCompile Include="Techniques\Examples\Basic_PS.hlsl" />
     <FxCompile Include="Techniques\Examples\Counting_PS.hlsl" />
     <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
+    <FxCompile Include="Techniques\Pathtracing\NEEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\Pathtracing\Pathtracing_RT.hlsl" />
   </ItemGroup>
 </Project>

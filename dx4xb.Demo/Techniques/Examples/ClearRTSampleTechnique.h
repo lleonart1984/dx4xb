@@ -9,7 +9,7 @@ struct MyTechnique : public Technique {
 	}
 
 	void ClearRenderTarget(gObj<GraphicsManager> manager) {
-		manager->Clear_RT(CurrentRenderTarget(), float4(1, 1, 0, 1));
+		manager->ClearRenderTarget(CurrentRenderTarget(), float4(1, 1, 0, 1));
 	}
 
 	void OnDispatch() {

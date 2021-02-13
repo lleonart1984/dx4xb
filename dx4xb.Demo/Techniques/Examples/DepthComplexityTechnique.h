@@ -41,18 +41,18 @@ public:
 		}
 
 		void Bindings(gObj<GraphicsBinder> binder) {
-			binder->Bindings_OnSet(); {
-				binder->Bindings_PixelShader();
+			binder->OnSet(); {
+				binder->PixelShader();
 				binder->UAV(0, CountingBuffer);
 
-				binder->Bindings_VertexShader();
+				binder->VertexShader();
 				binder->SRV(0, InstanceTransforms);
 				binder->SRV(1, GeometryTransforms);
 				binder->CBV(0, Camera);
 			}
 
-			binder->Bindings_OnDispatch(); {
-				binder->Bindings_VertexShader();
+			binder->OnDispatch(); {
+				binder->VertexShader();
 				binder->CBV(1, ObjectInfo);
 			}
 		}
@@ -67,12 +67,12 @@ public:
 		auto desc = scene->getScene();
 
 		// Allocate Memory for scene elements
-		VertexBuffer = Create_Buffer_VB<SceneVertex>(desc->Vertices().Count);
-		IndexBuffer = Create_Buffer_IB<int>(desc->Indices().Count);
-		Camera = Create_Buffer_CB<CameraCB>();
-		GeometryTransforms = Create_Buffer_SRV<float4x3>(desc->getTransformsBuffer().Count);
-		InstanceTransforms = Create_Buffer_SRV<float4x4>(desc->Instances().Count);
-		Complexity = Create_Texture2D_UAV<uint>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		VertexBuffer = CreateBufferVB<SceneVertex>(desc->Vertices().Count);
+		IndexBuffer = CreateBufferIB<int>(desc->Indices().Count);
+		Camera = CreateBufferCB<CameraCB>();
+		GeometryTransforms = CreateBufferSRV<float4x3>(desc->getTransformsBuffer().Count);
+		InstanceTransforms = CreateBufferSRV<float4x4>(desc->Instances().Count);
+		Complexity = CreateTexture2DUAV<uint>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
 		Load(showComplexity);
 		Load(pipeline);
@@ -80,10 +80,10 @@ public:
 		pipeline->Camera = Camera;
 		pipeline->GeometryTransforms = GeometryTransforms;
 		pipeline->InstanceTransforms = InstanceTransforms;
-		pipeline->CountingBuffer = Create_Texture2D_DSV(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		pipeline->CountingBuffer = CreateTexture2DDSV(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
-		screenVertices = Create_Buffer_VB<float2>(6);
-		screenVertices->Write_List({
+		screenVertices = CreateBufferVB<float2>(6);
+		screenVertices->Write({
 			float2(-1, -1), float2(1, -1), float2(1, 1),
 			float2(-1, -1), float2(1, 1), float2(-1, 1)
 			});
@@ -93,7 +93,7 @@ public:
 	}
 
 	void LoadScreenVertices(gObj<GraphicsManager> manager) {
-		manager->Load_AllToGPU(screenVertices);
+		manager->ToGPU(screenVertices);
 	}
 
 	void UpdateDirtyElements(gObj<GraphicsManager> manager) {
@@ -103,31 +103,31 @@ public:
 
 		if (+(elements & SceneElement::Vertices))
 		{
-			VertexBuffer->Write_Ptr(desc->Vertices().Data);
-			manager->Load_AllToGPU(VertexBuffer);
+			VertexBuffer->Write(desc->Vertices().Data);
+			manager->ToGPU(VertexBuffer);
 		}
 
 		if (+(elements & SceneElement::Indices))
 		{
-			IndexBuffer->Write_Ptr(desc->Indices().Data);
-			manager->Load_AllToGPU(IndexBuffer);
+			IndexBuffer->Write(desc->Indices().Data);
+			manager->ToGPU(IndexBuffer);
 		}
 
 		if (+(elements & SceneElement::Camera))
 		{
 			float4x4 proj, view;
 			scene->getCamera().GetMatrices(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), view, proj);
-			Camera->Write_Value(CameraCB{
+			Camera->Write(CameraCB{
 					proj,
 					view
 				});
-			manager->Load_AllToGPU(Camera);
+			manager->ToGPU(Camera);
 		}
 
 		if (+(elements & SceneElement::GeometryTransforms))
 		{
-			GeometryTransforms->Write_Ptr(desc->getTransformsBuffer().Data);
-			manager->Load_AllToGPU(GeometryTransforms);
+			GeometryTransforms->Write(desc->getTransformsBuffer().Data);
+			manager->ToGPU(GeometryTransforms);
 		}
 
 		if (+(elements & SceneElement::InstanceTransforms))
@@ -136,8 +136,8 @@ public:
 			for (int i = 0; i < desc->Instances().Count; i++)
 				transforms[i] = desc->Instances().Data[i].Transform;
 
-			InstanceTransforms->Write_Ptr(transforms);
-			manager->Load_AllToGPU(InstanceTransforms);
+			InstanceTransforms->Write(transforms);
+			manager->ToGPU(InstanceTransforms);
 			delete[] transforms;
 		}
 	}
@@ -154,12 +154,12 @@ public:
 	void DrawScene(gObj<GraphicsManager> manager) {
 		pipeline->CountingBuffer = Complexity;
 
-		manager->Set_Pipeline(pipeline);
-		manager->Set_IndexBuffer(IndexBuffer);
-		manager->Set_Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		manager->SetPipeline(pipeline);
+		manager->IndexBuffer(IndexBuffer);
+		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
-		manager->Clear_RT(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
-		manager->Clear_UAV(Complexity, uint4(0));
+		manager->ClearRenderTarget(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
+		manager->ClearUAV(Complexity, uint4(0));
 
 		auto desc = scene->getScene();
 
@@ -169,11 +169,11 @@ public:
 			for (int j = 0; j < instance.Count; j++) {
 				GeometryDescription geometry = desc->Geometries().Data[instance.GeometryIndices[j]];
 
-				manager->Set_VertexBuffer(VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount));
+				manager->VertexBuffer(VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount));
 
 				pipeline->ObjectInfo.TransformIndex = geometry.TransformIndex;
 				pipeline->ObjectInfo.MaterialIndex = geometry.MaterialIndex;
-				manager->Dispatch_IndexedTriangles(geometry.IndexCount, geometry.StartIndex);
+				manager->DrawIndexedTriangles(geometry.IndexCount, geometry.StartIndex);
 			}
 		}
 	}
@@ -182,9 +182,9 @@ public:
 		showComplexity->RenderTarget = CurrentRenderTarget();
 		showComplexity->Complexity = Complexity;
 
-		manager->Set_Pipeline(showComplexity);
-		manager->Set_VertexBuffer(screenVertices);
-		manager->Set_Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
-		manager->Dispatch_Triangles(6);
+		manager->SetPipeline(showComplexity);
+		manager->VertexBuffer(screenVertices);
+		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		manager->DrawTriangles(6);
 	}
 };

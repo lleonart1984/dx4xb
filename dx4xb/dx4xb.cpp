@@ -1576,7 +1576,7 @@ namespace dx4xb {
 
 #pragma region RaytracingManager implementation
 	
-	void RaytracingManager::Set_Program(gObj<RaytracingProgramBase> program) {
+	void RaytracingManager::SetProgram(gObj<RaytracingProgramBase> program) {
 		w_cmdList->activeProgram = program->wrapper;
 		w_cmdList->cmdList->SetComputeRootSignature(program->wrapper->globalSignature);
 		program->wrapper->globals->__InternalBindingObject->BindToGPU(
@@ -1586,20 +1586,20 @@ namespace dx4xb {
 		);
 	}
 
-	void RaytracingManager::Set_RayGeneration(gObj<RayGenerationHandle> shader) {
+	void RaytracingManager::SetRayGeneration(gObj<RayGenerationHandle> shader) {
 		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader);
 	}
 
-	void RaytracingManager::Set_Miss(gObj<MissHandle> shader, int index) {
+	void RaytracingManager::SetMiss(gObj<MissHandle> shader, int index) {
 		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader, index);
 	}
-	void RaytracingManager::Set_HitGroup(gObj<HitGroupHandle> shader, int geometryIndex,
+	void RaytracingManager::SetHitGroup(gObj<HitGroupHandle> shader, int geometryIndex,
 		int rayContribution, int multiplier, int instanceContribution) {
 		int index = rayContribution + (geometryIndex * multiplier) + instanceContribution;
 		w_cmdList->activeProgram->BindLocal(w_cmdList->w_device, shader, index);
 	}
 
-	void RaytracingManager::Dispatch_Rays(int width, int height, int depth) {
+	void RaytracingManager::DispatchRays(int width, int height, int depth) {
 		auto currentBindings = w_cmdList->currentPipeline.Dynamic_Cast<RaytracingPipeline>();
 		auto currentProgram = w_cmdList->activeProgram;
 
@@ -1673,7 +1673,7 @@ namespace dx4xb {
 		wrapper->structuralVersion++;
 	}
 
-	void TriangleGeometryCollection::Load_Vertices(int geometryID, gObj<Buffer> newVertices) {
+	void TriangleGeometryCollection::UpdateVertices(int geometryID, gObj<Buffer> newVertices) {
 		newVertices->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 
 		wrapper->geometries[geometryID].Triangles.VertexBuffer =
@@ -1684,7 +1684,7 @@ namespace dx4xb {
 		wrapper->updatingVersion++;
 	}
 
-	void TriangleGeometryCollection::Load_Transform(int geometryID, int transformIndex)
+	void TriangleGeometryCollection::UpdateTransform(int geometryID, int transformIndex)
 	{
 		D3D12_RAYTRACING_GEOMETRY_DESC& desc = wrapper->geometries[geometryID];
 		if (transformIndex != -1 && desc.Triangles.Transform3x4 == 0 ||
@@ -1697,7 +1697,7 @@ namespace dx4xb {
 			transformIndex == -1 ? 0 : wrapper->boundTransforms->GPUVirtualAddress(transformIndex);
 	}
 
-	int TriangleGeometryCollection::Create_Geometry(
+	int TriangleGeometryCollection::CreateGeometry(
 		gObj<Buffer> vertices,
 		gObj<Buffer> indices,
 		int transformIndex)
@@ -1731,7 +1731,7 @@ namespace dx4xb {
 		return wrapper->geometries->size();
 	}
 
-	int TriangleGeometryCollection::Create_Geometry(
+	int TriangleGeometryCollection::CreateGeometry(
 		gObj<Buffer> vertices,
 		int transformIndex)
 	{
@@ -1778,7 +1778,7 @@ namespace dx4xb {
 		wrapper->currentVertexOffset = vertexOffset;
 	}
 
-	void TriangleGeometryCollection::Set_Transforms(gObj<Buffer> transforms)
+	void TriangleGeometryCollection::UseTransforms(gObj<Buffer> transforms)
 	{
 		if (transforms != nullptr)
 			transforms->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
@@ -1786,7 +1786,7 @@ namespace dx4xb {
 		wrapper->boundTransforms = transforms;
 	}
 
-	int ProceduralGeometryCollection::Create_Geometry(gObj<Buffer> boxes)
+	int ProceduralGeometryCollection::CreateGeometry(gObj<Buffer> boxes)
 	{
 		boxes->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
@@ -1804,7 +1804,7 @@ namespace dx4xb {
 		return wrapper->geometries->size();
 	}
 
-	void ProceduralGeometryCollection::Load_Boxes(int geometryID, gObj<Buffer> newBoxes)
+	void ProceduralGeometryCollection::UpdateBoxes(int geometryID, gObj<Buffer> newBoxes)
 	{
 		D3D12_RAYTRACING_GEOMETRY_DESC& desc = wrapper->geometries[geometryID];
 		
@@ -1835,7 +1835,7 @@ namespace dx4xb {
 		dst[2][3] = transform._m32;
 	}
 
-	void InstanceCollection::Load_InstanceGeometry(int instance, gObj<GeometryCollection> geometries)
+	void InstanceCollection::UpdateGeometry(int instance, gObj<GeometryCollection> geometries)
 	{
 		if (geometries->wrapper->gpuVersion.isNull())
 			throw Exception::FromError(Errors::Invalid_Operation, "Geometry collection should be loaded on the GPU first.");
@@ -1847,14 +1847,14 @@ namespace dx4xb {
 		wrapper->updatingVersion++;
 	}
 
-	void InstanceCollection::Load_InstanceMask(int instance, UINT mask)
+	void InstanceCollection::UpdateMask(int instance, UINT mask)
 	{
 		D3D12_RAYTRACING_INSTANCE_DESC& desc =  wrapper->instances[instance];
 		desc.InstanceMask = mask;
 		wrapper->updatingVersion++;
 	}
 
-	void InstanceCollection::Load_InstanceContribution(int instance, int instanceContribution)
+	void InstanceCollection::UpdateContribution(int instance, int instanceContribution)
 	{
 
 		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
@@ -1862,14 +1862,14 @@ namespace dx4xb {
 		wrapper->updatingVersion++;
 	}
 
-	void InstanceCollection::Load_InstanceID(int instance, UINT instanceID)
+	void InstanceCollection::UpdateID(int instance, UINT instanceID)
 	{
 		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
 		desc.InstanceID = instanceID;
 		wrapper->updatingVersion++;
 	}
 
-	void InstanceCollection::Load_InstanceTransform(int instance, float4x3 transform)
+	void InstanceCollection::UpdateTransform(int instance, float4x3 transform)
 	{
 
 		D3D12_RAYTRACING_INSTANCE_DESC& desc = wrapper->instances[instance];
@@ -1877,7 +1877,7 @@ namespace dx4xb {
 		wrapper->updatingVersion++;
 	}
 
-	int InstanceCollection::Create_Instance(gObj<GeometryCollection> geometries, UINT mask, int instanceContribution, UINT instanceID, float4x3 transform)
+	int InstanceCollection::CreateInstance(gObj<GeometryCollection> geometries, UINT mask, int instanceContribution, UINT instanceID, float4x3 transform)
 	{
 		if (geometries->wrapper->gpuVersion.isNull())
 			throw Exception::FromError(Errors::Invalid_Operation, "Geometry collection should be loaded on the GPU first.");
@@ -1934,14 +1934,14 @@ namespace dx4xb {
 		wrapper->structuralVersion++;
 	}
 
-	gObj<InstanceCollection> RaytracingManager::Create_Intances() {
+	gObj<InstanceCollection> RaytracingManager::CreateIntances() {
 		DX_InstanceCollectionWrapper* wrapper = new DX_InstanceCollectionWrapper();
 		InstanceCollection* result = new InstanceCollection();
 		result->wrapper = wrapper;
 		return result;
 	}
 
-	gObj<TriangleGeometryCollection> RaytracingManager::Create_TriangleGeometries()
+	gObj<TriangleGeometryCollection> RaytracingManager::CreateTriangleGeometries()
 	{
 		TriangleGeometryCollection* triangles = new TriangleGeometryCollection();
 		triangles->wrapper = new DX_GeometryCollectionWrapper();
@@ -1949,7 +1949,7 @@ namespace dx4xb {
 		return triangles;
 	}
 
-	gObj<ProceduralGeometryCollection> RaytracingManager::Create_ProceduralGeometries()
+	gObj<ProceduralGeometryCollection> RaytracingManager::CreateProceduralGeometries()
 	{
 		ProceduralGeometryCollection* geometries = new ProceduralGeometryCollection();
 		geometries->wrapper = new DX_GeometryCollectionWrapper();
@@ -1963,7 +1963,7 @@ namespace dx4xb {
 	}
 
 
-	void RaytracingManager::Load_Geometry(gObj<GeometryCollection> geometries, bool allowUpdate, bool preferFastRaycasting)
+	void RaytracingManager::ToGPU(gObj<GeometryCollection> geometries, bool allowUpdate, bool preferFastRaycasting)
 	{
 		if (geometries->State() == CollectionState::UpToDate)
 			return;
@@ -2066,7 +2066,7 @@ namespace dx4xb {
 		geometries->wrapper->gpuVersion = baked;
 	}
 
-	void RaytracingManager::Load_Scene(gObj<InstanceCollection> instances, bool allowUpdate, bool preferFastRaycasting)
+	void RaytracingManager::ToGPU(gObj<InstanceCollection> instances, bool allowUpdate, bool preferFastRaycasting)
 	{
 		if (instances->State() == CollectionState::UpToDate)
 			return;
@@ -2193,7 +2193,7 @@ namespace dx4xb {
 
 #pragma region Command List Management
 
-	void dx4xb::GraphicsManager::Clear_RT(gObj<Texture2D> rt, const FLOAT values[4])
+	void dx4xb::GraphicsManager::ClearRenderTarget(gObj<Texture2D> rt, const FLOAT values[4])
 	{
 		auto cmdList = this->w_cmdList->cmdList;
 		wResource* resourceWrapper = rt->w_resource;
@@ -2202,12 +2202,12 @@ namespace dx4xb {
 		cmdList->ClearRenderTargetView(view->getRTVHandle(), values, 0, nullptr);
 	}
 
-	void dx4xb::GraphicsManager::Clear_DepthStencil(gObj<Texture2D> depthStencil, float depth, UINT8 stencil, D3D12_CLEAR_FLAGS flags)
+	void dx4xb::GraphicsManager::ClearDepthStencil(gObj<Texture2D> depthStencil, float depth, UINT8 stencil, D3D12_CLEAR_FLAGS flags)
 	{
 		w_cmdList->cmdList->ClearDepthStencilView(depthStencil->w_view->getDSVHandle(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, depth, stencil, 0, nullptr);
 	}
 
-	void dx4xb::CopyManager::Clear_UAV(gObj<ResourceView> uav, const unsigned int values[4])
+	void dx4xb::CopyManager::ClearUAV(gObj<ResourceView> uav, const unsigned int values[4])
 	{
 		wResource* resourceWrapper = uav->w_resource;
 		wResourceView* view = uav->w_view;
@@ -2223,31 +2223,47 @@ namespace dx4xb {
 			resourceWrapper->resource, values, 0, nullptr);
 	}
 
-	void dx4xb::CopyManager::Load_AllToGPU(gObj<ResourceView> resource)
+	void dx4xb::CopyManager::ClearUAV(gObj<ResourceView> uav, const FLOAT values[4])
+	{
+		wResource* resourceWrapper = uav->w_resource;
+		wResourceView* view = uav->w_view;
+		resourceWrapper->AddUAVBarrier(w_cmdList->cmdList);
+		long gpuHandleIndex = w_cmdList->w_device->gpu_csu->AllocateInFrame(1);
+		auto cpuHandleAtVisibleHeap = w_cmdList->w_device->gpu_csu->getCPUVersion(gpuHandleIndex);
+		auto gpuHandle = w_cmdList->w_device->gpu_csu->getGPUVersion(gpuHandleIndex);
+		auto cpuHandle = view->getUAVHandle();
+		resourceWrapper->device->CopyDescriptorsSimple(1, cpuHandleAtVisibleHeap, cpuHandle, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		w_cmdList->cmdList->ClearUnorderedAccessViewFloat(
+			gpuHandle,
+			cpuHandle,
+			resourceWrapper->resource, values, 0, nullptr);
+	}
+
+	void dx4xb::CopyManager::ToGPU(gObj<ResourceView> resource)
 	{
 		resource->w_resource->UpdateResourceFromMapped(this->w_cmdList->cmdList, resource->w_view);
 	}
 
-	void dx4xb::CopyManager::Load_AllFromGPU(gObj<ResourceView> resource)
+	void dx4xb::CopyManager::FromGPU(gObj<ResourceView> resource)
 	{
 		resource->w_resource->AddBarrier(this->w_cmdList->cmdList,
 			D3D12_RESOURCE_STATE_COPY_SOURCE);
 		resource->w_resource->UpdateMappedFromResource(this->w_cmdList->cmdList, resource->w_view);
 	}
 
-	void dx4xb::CopyManager::Load_RegionToGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
+	void dx4xb::CopyManager::ToGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
 	{
 		singleSubresource->w_resource->UpdateRegionFromUploading(w_cmdList->cmdList,
 			singleSubresource->w_view, region);
 	}
 
-	void dx4xb::CopyManager::Load_RegionFromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
+	void dx4xb::CopyManager::FromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region)
 	{
 		singleSubresource->w_resource->UpdateRegionToDownloading(w_cmdList->cmdList,
 			singleSubresource->w_view, region);
 	}
 	
-	void dx4xb::CopyManager::Copy_Resource(gObj<Texture2D> dst, gObj<Texture2D> src)
+	void dx4xb::CopyManager::Copy(gObj<Texture2D> dst, gObj<Texture2D> src)
 	{
 		dst->w_resource->AddBarrier(w_cmdList->cmdList,
 			D3D12_RESOURCE_STATE_COPY_DEST);
@@ -2258,13 +2274,13 @@ namespace dx4xb {
 			src->w_resource->resource);
 	}
 
-	void dx4xb::ComputeManager::Set_Pipeline(gObj<Pipeline> pipeline)
+	void dx4xb::ComputeManager::SetPipeline(gObj<Pipeline> pipeline)
 	{
 		w_cmdList->currentPipeline = pipeline;
 		pipeline->OnSet(w_cmdList);
 	}
 
-	void dx4xb::ComputeManager::Dispatch_Threads(int dimx, int dimy, int dimz)
+	void dx4xb::ComputeManager::Dispatch(int dimx, int dimy, int dimz)
 	{
 		if (!w_cmdList->currentPipeline) {
 			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
@@ -2279,7 +2295,7 @@ namespace dx4xb {
 		w_cmdList->cmdList->ResourceBarrier(1, &b);
 	}
 
-	void dx4xb::GraphicsManager::Set_Viewport(float width, float height, float maxDepth, float x, float y, float minDepth)
+	void dx4xb::GraphicsManager::Viewport(float width, float height, float maxDepth, float x, float y, float minDepth)
 	{
 		D3D12_VIEWPORT viewport;
 		viewport.Width = width;
@@ -2298,7 +2314,7 @@ namespace dx4xb {
 		w_cmdList->cmdList->RSSetScissorRects(1, &rect);
 	}
 
-	void GraphicsManager::Set_VertexBuffer(gObj<Buffer> buffer, int slot)
+	void GraphicsManager::VertexBuffer(gObj<Buffer> buffer, int slot)
 	{
 		buffer->w_resource->AddBarrier(w_cmdList->cmdList, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
 		D3D12_VERTEX_BUFFER_VIEW view;
@@ -2309,7 +2325,7 @@ namespace dx4xb {
 		}
 	}
 
-	void GraphicsManager::Set_IndexBuffer(gObj<Buffer> buffer)
+	void GraphicsManager::IndexBuffer(gObj<Buffer> buffer)
 	{
 		buffer->w_resource->AddBarrier(w_cmdList->cmdList, D3D12_RESOURCE_STATE_INDEX_BUFFER);
 		D3D12_INDEX_BUFFER_VIEW view;
@@ -2318,7 +2334,7 @@ namespace dx4xb {
 		w_cmdList->indexBufferSliceOffset = buffer->w_view->arrayStart;
 	}
 
-	void GraphicsManager::Dispatch_IndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
+	void GraphicsManager::DrawIndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
 	{
 		if (!w_cmdList->currentPipeline) {
 			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
@@ -2329,7 +2345,7 @@ namespace dx4xb {
 		w_cmdList->cmdList->DrawIndexedInstanced(count, 1, start + w_cmdList->indexBufferSliceOffset, w_cmdList->vertexBufferSliceOffset, 0);
 	}
 
-	void GraphicsManager::Dispatch_Primitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
+	void GraphicsManager::DrawPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start)
 	{
 		if (!w_cmdList->currentPipeline) {
 			throw Exception::FromError(Errors::Invalid_Operation, "Pipeline should be set first");
@@ -2418,6 +2434,8 @@ namespace dx4xb {
 
 	byte* dx4xb::ResourceView::MappedElement(int col, int row, int depthOrArray, int mip)
 	{
+		w_resource->__ResolveUploading();
+
 		switch (w_resource->desc.Dimension) {
 		case D3D12_RESOURCE_DIMENSION_BUFFER:
 		{
@@ -2504,12 +2522,12 @@ namespace dx4xb {
 		w_resource->ReadFromMapped(data, w_view, flipRows);
 	}
 
-	void dx4xb::ResourceView::WriteRegion(byte* data, const D3D12_BOX& region, bool flipRows)
+	void dx4xb::ResourceView::Write(byte* data, const D3D12_BOX& region, bool flipRows)
 	{
 		w_resource->WriteRegionToMappedSubresource(data, w_view, region, flipRows);
 	}
 
-	void dx4xb::ResourceView::ReadRegion(byte* data, const D3D12_BOX& region, bool flipRows)
+	void dx4xb::ResourceView::Read(byte* data, const D3D12_BOX& region, bool flipRows)
 	{
 		w_resource->ReadRegionFromMappedSubresource(data, w_view, region, flipRows);
 	}
@@ -3820,11 +3838,11 @@ namespace dx4xb {
 
 #pragma region Device Manager
 
-	void DeviceManager::Dispatch_Process(gObj<GPUProcess> process) {
+	void DeviceManager::ExecuteProcess(gObj<GPUProcess> process) {
 		device->scheduler->Enqueue(process);
 	}
 
-	void DeviceManager::Dispatch_Process_Async(gObj<GPUProcess> process) {
+	void DeviceManager::ExecuteProcessAsync(gObj<GPUProcess> process) {
 		device->scheduler->EnqueueAsync(process);
 	}
 
@@ -3891,14 +3909,14 @@ namespace dx4xb {
 			initialState, clearing, accessibility);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_CB(int elementStride, bool dynamic) 
+	gObj<Buffer> DeviceManager::CreateBufferCB(int elementStride, bool dynamic) 
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillBufferDescription(desc, (elementStride + 255) & (~255));
 		return CreateResourceView<Buffer>(desc, elementStride, 1, dynamic ? D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COPY_DEST, nullptr, dynamic ? CPUAccessibility::Write : CPUAccessibility::None);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_ADS(int elementStride, int count) 
+	gObj<Buffer> DeviceManager::CreateBufferADS(int elementStride, int count) 
 	{
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
@@ -3906,7 +3924,7 @@ namespace dx4xb {
 		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COMMON | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_SRV(int elementStride, int count) 
+	gObj<Buffer> DeviceManager::CreateBufferSRV(int elementStride, int count) 
 	{
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
@@ -3914,7 +3932,7 @@ namespace dx4xb {
 		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_VB(int elementStride, int count) 
+	gObj<Buffer> DeviceManager::CreateBufferVB(int elementStride, int count) 
 	{
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
@@ -3922,7 +3940,7 @@ namespace dx4xb {
 		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_IB(int elementStride, int count)
+	gObj<Buffer> DeviceManager::CreateBufferIB(int elementStride, int count)
 	{
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
@@ -3930,7 +3948,7 @@ namespace dx4xb {
 		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Buffer> DeviceManager::Create_Buffer_UAV(int elementStride, int count) 
+	gObj<Buffer> DeviceManager::CreateBufferUAV(int elementStride, int count) 
 	{
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
@@ -3938,57 +3956,57 @@ namespace dx4xb {
 		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	}
 
-	gObj<Texture1D> dx4xb::DeviceManager::Create_Texture1D_SRV(DXGI_FORMAT format, int width, int mips, int arrayLength)
+	gObj<Texture1D> dx4xb::DeviceManager::CreateTexture1DSRV(DXGI_FORMAT format, int width, int mips, int arrayLength)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture1DDescription(format, desc, width, mips, arrayLength);
 		return CreateResourceView<Texture1D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Texture1D> dx4xb::DeviceManager::Create_Texture1D_UAV(DXGI_FORMAT format, int width, int mips, int arrayLength)
+	gObj<Texture1D> dx4xb::DeviceManager::CreateTexture1DUAV(DXGI_FORMAT format, int width, int mips, int arrayLength)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture1DDescription(format, desc, width, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
 		return CreateResourceView<Texture1D>(desc, 0, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	}
 
-	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_SRV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	gObj<Texture2D> dx4xb::DeviceManager::CreateTexture2DSRV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture2DDescription(format, desc, width, height, mips, arrayLength);
 		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_SRV(dx4xb::string filePath)
+	gObj<Texture2D> dx4xb::DeviceManager::LoadTexture2D(dx4xb::string filePath)
 	{
 		auto data = TextureData::LoadFromFile(filePath.c_str());
-		gObj<Texture2D> texture = Create_Texture2D_SRV(data->Format, data->Width, data->Height, data->MipMaps, data->ArraySlices);
+		gObj<Texture2D> texture = CreateTexture2DSRV(data->Format, data->Width, data->Height, data->MipMaps, data->ArraySlices);
 		texture->Write(data->Data, true);
 		return texture;
 	}
 
-	void dx4xb::DeviceManager::Create_File(dx4xb::string filePath, gObj<Texture2D> texture)
+	void dx4xb::DeviceManager::Save(gObj<Texture2D> texture, dx4xb::string filePath)
 	{
 		gObj<TextureData> data = TextureData::CreateEmpty(texture->Width(), texture->Height(), 1, 1, texture->w_resource->desc.Format);
 		texture->Read(data->Data);
 		TextureData::SaveToFile(data, filePath.c_str());
 	}
 
-	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_UAV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	gObj<Texture2D> dx4xb::DeviceManager::CreateTexture2DUAV(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture2DDescription(format, desc, width, height, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS | D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 	}
 
-	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_RT(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
+	gObj<Texture2D> dx4xb::DeviceManager::CreateTexture2DRT(DXGI_FORMAT format, int width, int height, int mips, int arrayLength)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture2DDescription(format, desc, width, height, mips, arrayLength, D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
 		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_RENDER_TARGET);
 	}
 
-	gObj<Texture2D> dx4xb::DeviceManager::Create_Texture2D_DSV(int width, int height, DXGI_FORMAT format)
+	gObj<Texture2D> dx4xb::DeviceManager::CreateTexture2DDSV(int width, int height, DXGI_FORMAT format)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture2DDescription(format, desc, width, height, 1, 1, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL);
@@ -4001,14 +4019,14 @@ namespace dx4xb {
 		return CreateResourceView<Texture2D>(desc, 0, 0, D3D12_RESOURCE_STATE_DEPTH_WRITE, &clearing);
 	}
 
-	gObj<Texture3D> dx4xb::DeviceManager::Create_Texture3D_SRV(DXGI_FORMAT format, int width, int height, int depth, int mips)
+	gObj<Texture3D> dx4xb::DeviceManager::CreateTexture3DSRV(DXGI_FORMAT format, int width, int height, int depth, int mips)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture3DDescription(format, desc, width, height, depth, mips);
 		return CreateResourceView<Texture3D>(desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
-	gObj<Texture3D> dx4xb::DeviceManager::Create_Texture3D_UAV(DXGI_FORMAT format, int width, int height, int depth, int mips)
+	gObj<Texture3D> dx4xb::DeviceManager::CreateTexture3DUAV(DXGI_FORMAT format, int width, int height, int depth, int mips)
 	{
 		D3D12_RESOURCE_DESC desc = { };
 		FillTexture3DDescription(format, desc, width, height, depth, mips, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);

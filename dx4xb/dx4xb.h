@@ -88,10 +88,10 @@ namespace dx4xb {
 #pragma region DSL
 
 	template<typename T>
-	T ___dr(T* a) { return &a; }
+	T ___dr(T* a) { return a; }
 
-#define Execute_OnGPU(methodName) Dispatch_Method(this, &decltype(___dr(this))::methodName)
-#define Execute_OnGPU_Async(methodName) Dispatch_Method_Async(this, &decltype(___dr(this))::methodName)
+#define Execute_OnGPU(methodName) ExecuteMethod(this, &decltype(___dr(this))::methodName)
+#define Execute_OnGPU_Async(methodName) ExecuteMethodAsync(this, &decltype(___dr(this))::methodName)
 
 #pragma endregion
 
@@ -4616,12 +4616,14 @@ namespace dx4xb {
 				AddReference();
 		}
 
-		template <typename Subtype>
-		gObj(const gObj<Subtype>& other) {
-			this->counter = other.counter;
-			this->_this = (S*)other._this;
-			if (!isNull())
-				AddReference();
+		template <typename B>
+		operator gObj<B>() {
+			static_assert(std::is_base_of<B, S>::value, "Can not convert from the type to the base type");
+			gObj<B> result = nullptr;
+			result.counter = this->counter;
+			result._this = this->_this;
+			result.AddReference();
+			return result;
 		}
 
 		inline gObj<S>& operator = (const gObj<S>& other) {
@@ -5475,19 +5477,19 @@ namespace dx4xb {
 		/// Writes a region in the main subresource to uploading memory.
 		/// </summary>
 		/// <param name="flipRows">True if rows should be consider inverted.</param>
-		void WriteRegion(byte* data, const D3D12_BOX& region, bool flipRows = false);
+		void Write(byte* data, const D3D12_BOX& region, bool flipRows = false);
 
 		/// <summary>
 		/// Reads a region in the main subresource from downloading memory.
 		/// </summary>
 		/// <param name="flipRows">True if rows should be consider inverted.</param>
-		void ReadRegion(byte* data, const D3D12_BOX& region, bool flipRows = false);
+		void Read(byte* data, const D3D12_BOX& region, bool flipRows = false);
 
 		/// <summary>
 		/// Writes to uploading memory the data.
 		/// </summary>
 		template <typename T>
-		void Write_Ptr(T* data) {
+		void Write(T* data) {
 			Write((byte*)data);
 		}
 
@@ -5495,16 +5497,16 @@ namespace dx4xb {
 		/// Writes to uploading memory the data.
 		/// </summary>
 		template<typename T>
-		void Write_List(std::initializer_list<T> data) {
-			Write_Ptr(data.begin());
+		void Write(std::initializer_list<T> data) {
+			Write(data.begin());
 		}
 
 		/// <summary>
 		/// Writes to uploading memory the data.
 		/// </summary>
 		template<typename T>
-		void Write_Value(const T& elementValue) {
-			Write_Ptr(&elementValue);
+		void Write(const T& elementValue) {
+			Write(&elementValue);
 		}
 	};
 
@@ -5530,7 +5532,7 @@ namespace dx4xb {
 		D3D12_GPU_VIRTUAL_ADDRESS GPUVirtualAddress(int element = 0) const;
 
 		template<typename T>
-		void Write_Element(int index, const T& value) {
+		void WriteElement(int index, const T& value) {
 			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(index, 0, 0, 0), (void*)&value, sizeof(T));
@@ -5575,7 +5577,7 @@ namespace dx4xb {
 		}
 
 		template<typename T>
-		void Write_Element(int tx, const T& value, int mip = 0, int slice = 0) {
+		void WriteElement(int tx, const T& value, int mip = 0, int slice = 0) {
 			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, 0, slice, mip), (void*)&value, sizeof(T));
@@ -5618,7 +5620,7 @@ namespace dx4xb {
 		}
 
 		template<typename T>
-		void Write_Element(int tx, int ty, const T& value, int mip = 0, int slice = 0) {
+		void WriteElement(int tx, int ty, const T& value, int mip = 0, int slice = 0) {
 			if (sizeof(T) != this->ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, ty, slice, mip), (void*)&value, sizeof(T));
@@ -5650,7 +5652,7 @@ namespace dx4xb {
 		gObj<Texture3D> Slice_Mips(int start, int count) const;
 
 		template<typename T>
-		void Write_Element(int tx, int ty, int tz, const T& value, int mip = 0) {
+		void WriteElement(int tx, int ty, int tz, const T& value, int mip = 0) {
 			if (sizeof(T) != ElementStride())
 				throw Exception::FromError(Errors::Invalid_Operation, "Invalid element size");
 			memcpy((void*)MappedElement(tx, ty, tz, mip), (void*)&value, sizeof(T));
@@ -14238,14 +14240,14 @@ namespace dx4xb {
 		/// <summary>
 		/// Specifies next bindings are activated when the pipeline is set.
 		/// </summary>
-		void Bindings_OnSet() {
+		void OnSet() {
 			this->collectGlobal = true;
 		}
 
 		/// <summary>
 		/// Specifies next bindings are activated when dispatching
 		/// </summary>
-		void Bindings_OnDispatch() {
+		void OnDispatch() {
 			this->collectGlobal = false;
 		}
 
@@ -14390,27 +14392,27 @@ namespace dx4xb {
 	public:
 		GraphicsBinder();
 
-		void Bindings_All() {
+		void All() {
 			this->visibility = D3D12_SHADER_VISIBILITY_ALL;
 		}
 
-		void Bindings_VertexShader() {
+		void VertexShader() {
 			this->visibility = D3D12_SHADER_VISIBILITY_VERTEX;
 		}
 
-		void Bindings_PixelShader() {
+		void PixelShader() {
 			this->visibility = D3D12_SHADER_VISIBILITY_PIXEL;
 		}
 
-		void Bindings_GeometryShader() {
+		void GeometryShader() {
 			this->visibility = D3D12_SHADER_VISIBILITY_GEOMETRY;
 		}
 
-		void Bindings_HullShader() {
+		void HullShader() {
 			this->visibility = D3D12_SHADER_VISIBILITY_HULL;
 		}
 
-		void Bindings_DomainShader() {
+		void DomainShader() {
 			this->visibility = D3D12_SHADER_VISIBILITY_DOMAIN;
 		}
 
@@ -15067,8 +15069,8 @@ namespace dx4xb {
 
 		void Bindings(gObj<GraphicsBinder> binder)
 		{
-			binder->Bindings_OnSet();
-			binder->Bindings_PixelShader();
+			binder->OnSet();
+			binder->PixelShader();
 			binder->RTV(0, RenderTarget);
 			binder->SRV(0, Complexity);
 		}
@@ -15085,7 +15087,7 @@ namespace dx4xb {
 		friend RaytracingPipeline;
 		friend RaytracingManager;
 
-		wProgram* wrapper;
+		wProgram* wrapper = nullptr;
 
 		// Collect bindings, create signatures and shader tables.
 		void OnLoad(wDevice* dxWrapper);
@@ -15317,7 +15319,8 @@ namespace dx4xb {
 		// This method ask the program to setup and create shader tables, signatures, etc.
 		template<typename P>
 		void RTProgram(gObj<P>& program) {
-			program = new P();
+			if (program.isNull())
+				program = new P();
 			program->BindContext(this);
 			LoadProgram(program);
 		}
@@ -15373,52 +15376,79 @@ namespace dx4xb {
 		/// <summary>
 		/// Clears a resource on the gpu as UAV
 		/// </summary>
-		void Clear_UAV(gObj<ResourceView> uav, const FLOAT values[4]);
+		void ClearUAV(gObj<ResourceView> uav, const FLOAT values[4]);
 		/// <summary>
 		/// Clears a resource on the gpu as UAV
 		/// </summary>
-		void Clear_UAV(gObj<ResourceView> uav, const unsigned int values[4]);
+		void ClearUAV(gObj<ResourceView> uav, const unsigned int values[4]);
 		/// <summary>
 		/// Clears a resource on the gpu as UAV
 		/// </summary>
-		void Clear_UAV(gObj<ResourceView> uav, const float4& value) {
+		void ClearUAV(gObj<ResourceView> uav, const float4& value) {
 			float v[4]{ value.x, value.y, value.z, value.w };
-			Clear_UAV(uav, v);
+			ClearUAV(uav, v);
 		}
 		/// <summary>
 		/// Clears a resource on the gpu as UAV
 		/// </summary>
-		inline void Clear_UAV(gObj<ResourceView> uav, const unsigned int& value) {
+		inline void ClearUAV(gObj<ResourceView> uav, const unsigned int& value) {
 			unsigned int v[4]{ value, value, value, value };
-			Clear_UAV(uav, v);
+			ClearUAV(uav, v);
 		}
 		/// <summary>
 		/// Clears a resource on the gpu as UAV
 		/// </summary>
-		inline void Clear_UAV(gObj<ResourceView> uav, const uint4& value) {
+		inline void ClearUAV(gObj<ResourceView> uav, const uint4& value) {
 			unsigned int v[4]{ value.x, value.y, value.z, value.w };
-			Clear_UAV(uav, v);
+			ClearUAV(uav, v);
+		}
+		
+		/// <summary>
+		/// Updates all subresources from mapped memory to the gpu
+		/// </summary>
+		void ToGPU(gObj<ResourceView> resource);
+
+		/// <summary>
+		/// Updates all subresources from mapped memory to the gpu
+		/// </summary>
+		void ToGPU(gObj<Buffer> resource) {
+			ToGPU(resource.Static_Cast<ResourceView>());
 		}
 		/// <summary>
 		/// Updates all subresources from mapped memory to the gpu
 		/// </summary>
-		void Load_AllToGPU(gObj<ResourceView> resource);
+		void ToGPU(gObj<Texture1D> resource) {
+			ToGPU(resource.Static_Cast<ResourceView>());
+		}
+		/// <summary>
+		/// Updates all subresources from mapped memory to the gpu
+		/// </summary>
+		void ToGPU(gObj<Texture2D> resource) {
+			ToGPU(resource.Static_Cast<ResourceView>());
+		}
+		/// <summary>
+		/// Updates all subresources from mapped memory to the gpu
+		/// </summary>
+		void ToGPU(gObj<Texture3D> resource) {
+			ToGPU(resource.Static_Cast<ResourceView>());
+		}
+
 		/// <summary>
 		/// Updates all subresources from the gpu to mapped memory
 		/// </summary>
-		void Load_AllFromGPU(gObj<ResourceView> resource);
+		void FromGPU(gObj<ResourceView> resource);
 		/// <summary>
 		/// Updates a region of a single subresource from mapped memory to the gpu
 		/// </summary>
-		void Load_RegionToGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region);
+		void ToGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region);
 		/// <summary>
 		/// Updates a region of a single subresource from the gpu to mapped memory
 		/// </summary>
-		void Load_RegionFromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region);
+		void FromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region);
 		/// <summary>
 		/// Copies the content from one resource to another. Both resources must be compatible.
 		/// </summary>
-		void Copy_Resource(gObj<Texture2D> dst, gObj<Texture2D> src);
+		void Copy(gObj<Texture2D> dst, gObj<Texture2D> src);
 	};
 
 	class ComputeManager : public CopyManager
@@ -15431,10 +15461,10 @@ namespace dx4xb {
 	public:
 
 		// Sets a graphics pipeline
-		void Set_Pipeline(gObj<Pipeline> pipeline);
+		void SetPipeline(gObj<Pipeline> pipeline);
 
 		// Dispatches a specific number of threads to execute current compute shader set.
-		void Dispatch_Threads(int dimx, int dimy = 1, int dimz = 1);
+		void Dispatch(int dimx, int dimy = 1, int dimz = 1);
 	};
 
 	class GraphicsManager : public ComputeManager {
@@ -15445,45 +15475,45 @@ namespace dx4xb {
 		}
 	public:
 		// Changes the viewport
-		void Set_Viewport(float width, float height, float maxDepth = 1.0f, float x = 0, float y = 0, float minDepth = 0.0f);
+		void Viewport(float width, float height, float maxDepth = 1.0f, float x = 0, float y = 0, float minDepth = 0.0f);
 
 		// Sets a vertex buffer in a specific slot
-		void Set_VertexBuffer(gObj<Buffer> buffer, int slot = 0);
+		void VertexBuffer(gObj<Buffer> buffer, int slot = 0);
 
 		// Sets an index buffer
-		void Set_IndexBuffer(gObj<Buffer> buffer);
+		void IndexBuffer(gObj<Buffer> buffer);
 
-		void Clear_RT(gObj<Texture2D> rt, const FLOAT values[4]);
-		inline void Clear_RT(gObj<Texture2D> rt, const float4& value) {
+		void ClearRenderTarget(gObj<Texture2D> rt, const FLOAT values[4]);
+		inline void ClearRenderTarget(gObj<Texture2D> rt, const float4& value) {
 			float v[4]{ value.x, value.y, value.z, value.w };
-			Clear_RT(rt, v);
+			ClearRenderTarget(rt, v);
 		}
 		// Clears the render target accessed by the Texture2D View with a specific float3 value
-		inline void Clear_RT(gObj<Texture2D> rt, const float3& value) {
+		inline void ClearRenderTarget(gObj<Texture2D> rt, const float3& value) {
 			float v[4]{ value.x, value.y, value.z, 1.0f };
-			Clear_RT(rt, v);
+			ClearRenderTarget(rt, v);
 		}
-		void Clear_DepthStencil(gObj<Texture2D> depthStencil, float depth, UINT8 stencil, D3D12_CLEAR_FLAGS flags = D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL);
-		inline void Clear_Depth(gObj<Texture2D> depthStencil, float depth = 1.0f) {
-			Clear_DepthStencil(depthStencil, depth, 0, D3D12_CLEAR_FLAG_DEPTH);
+		void ClearDepthStencil(gObj<Texture2D> depthStencil, float depth, UINT8 stencil, D3D12_CLEAR_FLAGS flags = D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL);
+		inline void ClearDepth(gObj<Texture2D> depthStencil, float depth = 1.0f) {
+			ClearDepthStencil(depthStencil, depth, 0, D3D12_CLEAR_FLAG_DEPTH);
 		}
-		inline void Clear_Stencil(gObj<Texture2D> depthStencil, UINT8 stencil) {
-			Clear_DepthStencil(depthStencil, 1, stencil, D3D12_CLEAR_FLAG_STENCIL);
+		inline void ClearStencil(gObj<Texture2D> depthStencil, UINT8 stencil) {
+			ClearDepthStencil(depthStencil, 1, stencil, D3D12_CLEAR_FLAG_STENCIL);
 		}
 
 		// Draws a primitive using a specific number of vertices
-		void Dispatch_Primitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
+		void DrawPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
 
 		// Draws a primitive using a specific number of vertices
-		void Dispatch_IndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
+		void DrawIndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
 
 		// Draws triangles using a specific number of vertices
-		void Dispatch_Triangles(int count, int start = 0) {
-			Dispatch_Primitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
+		void DrawTriangles(int count, int start = 0) {
+			DrawPrimitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
 		}
 
-		void Dispatch_IndexedTriangles(int count, int start = 0) {
-			Dispatch_IndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
+		void DrawIndexedTriangles(int count, int start = 0) {
+			DrawIndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
 		}
 	};
 
@@ -15533,32 +15563,32 @@ namespace dx4xb {
 		void __SetInputLayout(VertexElement* elements, int count);
 
 	public:
-		void Load_Vertices(int geometryID, gObj<Buffer> newVertices);
+		void UpdateVertices(int geometryID, gObj<Buffer> newVertices);
 
-		void Load_Transform(int geometryID, int transformIndex);
+		void UpdateTransform(int geometryID, int transformIndex);
 
-		int Create_Geometry(gObj<Buffer> vertices, int transformIndex = -1);
+		int CreateGeometry(gObj<Buffer> vertices, int transformIndex = -1);
 
-		int Create_Geometry(gObj<Buffer> vertices, gObj<Buffer> indices, int transformIndex = -1);
+		int CreateGeometry(gObj<Buffer> vertices, gObj<Buffer> indices, int transformIndex = -1);
 
 		template<int count>
-		void Set_VertexLayout(VertexElement(&layout)[count]) {
+		void UseVertexLayout(VertexElement(&layout)[count]) {
 			__SetInputLayout((VertexElement*)&layout, count);
 		}
-		void Set_VertexLayout(std::initializer_list<VertexElement> layout) {
+		void UseVertexLayout(std::initializer_list<VertexElement> layout) {
 			__SetInputLayout((VertexElement*)layout.begin(), layout.size());
 		}
 
-		void Set_Transforms(gObj<Buffer> transforms);
+		void UseTransforms(gObj<Buffer> transforms);
 	};
 
 	class ProceduralGeometryCollection : public GeometryCollection {
 		friend RaytracingManager;
 		ProceduralGeometryCollection() :GeometryCollection() {}
 	public:
-		void Load_Boxes(int start, gObj<Buffer> newBoxes);
+		void UpdateBoxes(int start, gObj<Buffer> newBoxes);
 
-		int Create_Geometry(gObj<Buffer> boxes);
+		int CreateGeometry(gObj<Buffer> boxes);
 	};
 
 	class InstanceCollection {
@@ -15569,19 +15599,19 @@ namespace dx4xb {
 		InstanceCollection() {}
 	public:
 		// Updates the geometry attribute for a specific instance
-		void Load_InstanceGeometry(int instance, gObj<GeometryCollection> geometries);
+		void UpdateGeometry(int instance, gObj<GeometryCollection> geometries);
 		// Updates the mask attribute for a specific instance
-		void Load_InstanceMask(int instance, UINT mask);
+		void UpdateMask(int instance, UINT mask);
 		// Updates the contribution attribute for a specific instance
-		void Load_InstanceContribution(int instance, int instanceContribution);
+		void UpdateContribution(int instance, int instanceContribution);
 		// Updates the instance ID attribute for a specific instance
-		void Load_InstanceID(int instance, UINT instanceID);
+		void UpdateID(int instance, UINT instanceID);
 		// Updates the transform attribute for a specific instance
-		void Load_InstanceTransform(int instance, float4x3 transform);
+		void UpdateTransform(int instance, float4x3 transform);
 
 		// Adds a new instance to the collection.
 		// Returns the number of instances.
-		int Create_Instance(gObj<GeometryCollection> geometry,
+		int CreateInstance(gObj<GeometryCollection> geometry,
 			UINT mask = 255U,
 			int contribution = 0,
 			UINT instanceID = INTSAFE_UINT_MAX,
@@ -15604,33 +15634,52 @@ namespace dx4xb {
 		{
 		}
 	public:
-		gObj<TriangleGeometryCollection> Create_TriangleGeometries();
-		gObj<ProceduralGeometryCollection> Create_ProceduralGeometries();
-		gObj<InstanceCollection> Create_Intances();
+		using GraphicsManager::ToGPU;
+
+		gObj<TriangleGeometryCollection> CreateTriangleGeometries();
+		gObj<ProceduralGeometryCollection> CreateProceduralGeometries();
+		gObj<InstanceCollection> CreateIntances();
 
 		gObj<GeometryCollection> Attach(gObj<GeometryCollection> collection);
 
 		// Depending on collection state, builds, updates or rebuilds current collection into GPU buffers.
-		void Load_Geometry(gObj<GeometryCollection> geometries,
-			bool allowUpdate = false, bool preferFastRaycasting = true);
+		void ToGPU(gObj<GeometryCollection> geometries,
+			bool allowUpdate, bool preferFastRaycasting);
+
 		// Depending on collection state, builds, updates or rebuilds current collection into GPU buffers.
-		void Load_Scene(gObj<InstanceCollection> instances,
-			bool allowUpdate = false, bool preferFastRaycasting = true);
+		void ToGPU(gObj<TriangleGeometryCollection> geometries,
+			bool allowUpdate, bool preferFastRaycasting)
+		{
+			ToGPU(geometries.Static_Cast<GeometryCollection>(),
+				allowUpdate, preferFastRaycasting);
+		}
+
+		// Depending on collection state, builds, updates or rebuilds current collection into GPU buffers.
+		void ToGPU(gObj<ProceduralGeometryCollection> geometries,
+			bool allowUpdate, bool preferFastRaycasting)
+		{
+			ToGPU(geometries.Static_Cast<GeometryCollection>(),
+				allowUpdate, preferFastRaycasting);
+		}
+
+		// Depending on collection state, builds, updates or rebuilds current collection into GPU buffers.
+		void ToGPU(gObj<InstanceCollection> instances,
+			bool allowUpdate, bool preferFastRaycasting);
 
 		// Activate this program to be used when dispatching rays.
-		void Set_Program(gObj<RaytracingProgramBase> program);
+		void SetProgram(gObj<RaytracingProgramBase> program);
 
 		// Commit all local bindings for this ray generation shader
-		void Set_RayGeneration(gObj<RayGenerationHandle> shader);
+		void SetRayGeneration(gObj<RayGenerationHandle> shader);
 
 		// Commit all local bindings for this miss shader
-		void Set_Miss(gObj<MissHandle> shader, int index);
+		void SetMiss(gObj<MissHandle> shader, int index);
 
 		// Commit all local bindings for this shader group
-		void Set_HitGroup(gObj<HitGroupHandle> group, int geometryIndex,
+		void SetHitGroup(gObj<HitGroupHandle> group, int geometryIndex,
 			int rayContribution = 0, int multiplier = 1, int instanceContribution = 0);
 
-		void Dispatch_Rays(int width, int height, int depth = 1);
+		void DispatchRays(int width, int height, int depth = 1);
 	};
 
 #pragma endregion
@@ -15778,150 +15827,150 @@ namespace dx4xb {
 
 		// Creates a buffer to be used as a constant buffer in a shader.
 		// Dynamic buffers are created in a upload heap so, they can be written directly from the cpu.
-		gObj<Buffer> Create_Buffer_CB(int elementStride, bool dynamic = false);
+		gObj<Buffer> CreateBufferCB(int elementStride, bool dynamic = false);
 		// Creates a buffer to be used as a constant buffer in a shader.
 		// Dynamic buffers are created in a upload heap so, they can be written directly from the cpu.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_CB(bool dynamic = false) {
-			return Create_Buffer_CB(sizeof(T), dynamic);
+		gObj<Buffer> CreateBufferCB(bool dynamic = false) {
+			return CreateBufferCB(sizeof(T), dynamic);
 		}
 
 		// Creates a buffer to store modifiable acceleration datastructure geometry and instance buffers.
-		gObj<Buffer> Create_Buffer_ADS(int elementStride, int count);
+		gObj<Buffer> CreateBufferADS(int elementStride, int count);
 		// Creates a buffer to store modifiable acceleration datastructure geometry and instance buffers.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_ADS(int count = 1) {
-			return Create_Buffer_ADS(sizeof(T), count);
+		gObj<Buffer> CreateBufferADS(int count = 1) {
+			return CreateBufferADS(sizeof(T), count);
 		}
 
 		// Creates a buffer to be used as a StructuredBuffer in a shader.
-		gObj<Buffer> Create_Buffer_SRV(int elementStride, int count);
+		gObj<Buffer> CreateBufferSRV(int elementStride, int count);
 		// Creates a buffer to be used as a StructuredBuffer in a shader.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_SRV(int count = 1) {
-			return Create_Buffer_SRV(sizeof(T), count);
+		gObj<Buffer> CreateBufferSRV(int count = 1) {
+			return CreateBufferSRV(sizeof(T), count);
 		}
 
 		// Creates a buffer to be binded as a vertex buffer.
-		gObj<Buffer> Create_Buffer_VB(int elementStride, int count);
+		gObj<Buffer> CreateBufferVB(int elementStride, int count);
 		// Creates a buffer to be binded as a vertex buffer.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_VB(int count) {
-			return Create_Buffer_VB(sizeof(T), count);
+		gObj<Buffer> CreateBufferVB(int count) {
+			return CreateBufferVB(sizeof(T), count);
 		}
 
 		// Creates a buffer to be binded as an index buffer.
-		gObj<Buffer> Create_Buffer_IB(int elementStride, int count);
+		gObj<Buffer> CreateBufferIB(int elementStride, int count);
 		// Creates a buffer to be binded as an index buffer.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_IB(int count) {
+		gObj<Buffer> CreateBufferIB(int count) {
 			throw Exception::FromError(Errors::UnsupportedFormat, "Error in type");
 		}
 		// Creates a buffer to be binded as an index buffer.
 		template <>
-		gObj<Buffer> Create_Buffer_IB<int>(int count) {
-			return Create_Buffer_IB(4, count);
+		gObj<Buffer> CreateBufferIB<int>(int count) {
+			return CreateBufferIB(4, count);
 		}
 		// Creates a buffer to be binded as an index buffer.
 		template <>
-		gObj<Buffer> Create_Buffer_IB<unsigned int>(int count) {
-			return Create_Buffer_IB(4, count);
+		gObj<Buffer> CreateBufferIB<unsigned int>(int count) {
+			return CreateBufferIB(4, count);
 		}
 		// Creates a buffer to be binded as an index buffer.
 		template <>
-		gObj<Buffer> Create_Buffer_IB<short>(int count) {
-			return Create_Buffer_IB(2, count);
+		gObj<Buffer> CreateBufferIB<short>(int count) {
+			return CreateBufferIB(2, count);
 		}
 		// Creates a buffer to be binded as an index buffer.
 		template <>
-		gObj<Buffer> Create_Buffer_IB<unsigned short>(int count) {
-			return Create_Buffer_IB(2, count);
+		gObj<Buffer> CreateBufferIB<unsigned short>(int count) {
+			return CreateBufferIB(2, count);
 		}
 
 		// Creates a buffer to be used as a RWStructuredBuffer in a shader.
-		gObj<Buffer> Create_Buffer_UAV(int elementStride, int count);
+		gObj<Buffer> CreateBufferUAV(int elementStride, int count);
 		// Creates a buffer to be used as a RWStructuredBuffer in a shader.
 		template <typename T>
-		gObj<Buffer> Create_Buffer_UAV(int count = 1) {
-			return Create_Buffer_UAV(sizeof(T), count);
+		gObj<Buffer> CreateBufferUAV(int count = 1) {
+			return CreateBufferUAV(sizeof(T), count);
 		}
 
 		// Creates a onedimensional texture to be used as a Texture1D in a shader.
-		gObj<Texture1D> Create_Texture1D_SRV(DXGI_FORMAT format, int width, int mips = 1, int arrayLength = 1);
+		gObj<Texture1D> CreateTexture1DSRV(DXGI_FORMAT format, int width, int mips = 1, int arrayLength = 1);
 		// Creates a onedimensional texture to be used as a Texture1D in a shader.
 		template<typename T>
-		gObj<Texture1D> Create_Texture1D_SRV(int width, int mips = 1, int arrayLength = 1) {
-			return Create_Texture1D_SRV(Formats<T>::format, width, mips, arrayLength);
+		gObj<Texture1D> CreateTexture1DSRV(int width, int mips = 1, int arrayLength = 1) {
+			return CreateTexture1DSRV(Formats<T>::format, width, mips, arrayLength);
 		}
 
 		// Creates a onedimensional texture to be used as a RWTexture1D in a shader.
 		// if mips == 0 all possible mips are allocated.
-		gObj<Texture1D> Create_Texture1D_UAV(DXGI_FORMAT format, int width, int mips = 0, int arrayLength = 1);
+		gObj<Texture1D> CreateTexture1DUAV(DXGI_FORMAT format, int width, int mips = 0, int arrayLength = 1);
 		// Creates a onedimensional texture to be used as a RWTexture1D in a shader.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture1D> Create_Texture1D_UAV(int width, int mips = 0, int arrayLength = 1) {
-			return Create_Texture1D_UAV(Formats<T>::Value, width, mips, arrayLength);
+		gObj<Texture1D> CreateTexture1DUAV(int width, int mips = 0, int arrayLength = 1) {
+			return CreateTexture1DUAV(Formats<T>::Value, width, mips, arrayLength);
 		}
 
 		// Creates a bidimensional texture to be used as a Texture2D in a shader.
 		// if mips == 0 all possible mips are allocated.
-		gObj<Texture2D> Create_Texture2D_SRV(DXGI_FORMAT format, int width, int height, int mips = 0, int arrayLength = 1);
+		gObj<Texture2D> CreateTexture2DSRV(DXGI_FORMAT format, int width, int height, int mips = 0, int arrayLength = 1);
 		// Creates a bidimensional texture to be used as a Texture2D in a shader.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture2D> Create_Texture2D_SRV(int width, int height, int mips = 0, int arrayLength = 1) {
-			return Create_Texture2D_SRV(Formats<T>::Value, width, height, mips, arrayLength);
+		gObj<Texture2D> CreateTexture2DSRV(int width, int height, int mips = 0, int arrayLength = 1) {
+			return CreateTexture2DSRV(Formats<T>::Value, width, height, mips, arrayLength);
 		}
 		/// <summary>
 		/// Loads the content of a file into a texture2D.
 		/// </summary>
-		gObj<Texture2D> Create_Texture2D_SRV(dx4xb::string filePath);
+		gObj<Texture2D> LoadTexture2D(dx4xb::string filePath);
 
 		/// <summary>
 		///	Saves the content of a texture to a file.
 		/// </summary>
-		void Create_File(dx4xb::string filePath, gObj<Texture2D> texture);
+		void Save(gObj<Texture2D> texture, dx4xb::string filePath);
 
 		// Creates a bidimensional texture to be used as a RWTexture2D in a shader or a render target.
 		// if mips == 0 all possible mips are allocated.
-		gObj<Texture2D> Create_Texture2D_UAV(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
+		gObj<Texture2D> CreateTexture2DUAV(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
 		// Creates a bidimensional texture to be used as a RWTexture2D in a shader.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture2D> Create_Texture2D_UAV(int width, int height, int mips = 1, int arrayLength = 1) {
-			return Create_Texture2D_UAV(Formats<T>::Value, width, height, mips, arrayLength);
+		gObj<Texture2D> CreateTexture2DUAV(int width, int height, int mips = 1, int arrayLength = 1) {
+			return CreateTexture2DUAV(Formats<T>::Value, width, height, mips, arrayLength);
 		}
 
 		// Creates a bidimensional texture to be used exclusively as a render target.
 		// if mips == 0 all possible mips are allocated.
-		gObj<Texture2D> Create_Texture2D_RT(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
+		gObj<Texture2D> CreateTexture2DRT(DXGI_FORMAT format, int width, int height, int mips = 1, int arrayLength = 1);
 		// Creates a bidimensional texture to be used exclusively as a render target.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture2D> Create_Texture2D_RT(int width, int height, int mips = 1, int arrayLength = 1) {
-			return Create_Texture2D_RT(Formats<T>::Value, width, height, mips, arrayLength);
+		gObj<Texture2D> CreateTexture2DRT(int width, int height, int mips = 1, int arrayLength = 1) {
+			return CreateTexture2DRT(Formats<T>::Value, width, height, mips, arrayLength);
 		}
 
 		// Creates a bidimensional texture to be used as exclusively as DepthStencil Buffer.
-		gObj<Texture2D> Create_Texture2D_DSV(int width, int height, DXGI_FORMAT format = DXGI_FORMAT_D32_FLOAT);
+		gObj<Texture2D> CreateTexture2DDSV(int width, int height, DXGI_FORMAT format = DXGI_FORMAT_D32_FLOAT);
 
 		// Creates a threedimensional texture to be used as a Texture3D in a shader.
 		// if mips == 0 all possible mips are allocated.
-		gObj<Texture3D> Create_Texture3D_SRV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
+		gObj<Texture3D> CreateTexture3DSRV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
 		// Creates a threedimensional texture to be used as a Texture3D in a shader.
 		// if mips == 0 all possible mips are allocated.
 		template<typename T>
-		gObj<Texture3D> Create_Texture3D_SRV(int width, int height, int depth, int mips = 1) {
-			return Create_Texture3D_SRV(Formats<T>::Value, width, height, depth, mips);
+		gObj<Texture3D> CreateTexture3DSRV(int width, int height, int depth, int mips = 1) {
+			return CreateTexture3DSRV(Formats<T>::Value, width, height, depth, mips);
 		}
 
 		// Creates a threedimensional texture to be used as a RWTexture3D in a shader.
-		gObj<Texture3D> Create_Texture3D_UAV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
+		gObj<Texture3D> CreateTexture3DUAV(DXGI_FORMAT format, int width, int height, int depth, int mips = 1);
 		// Creates a threedimensional texture to be used as a RWTexture3D in a shader.
 		template<typename T>
-		gObj<Texture3D> Create_Texture3D_UAV(int width, int height, int depth, int mips = 1) {
-			return Create_Texture3D_UAV(Formats<T>::Value, width, height, depth, mips);
+		gObj<Texture3D> CreateTexture3DUAV(int width, int height, int depth, int mips = 1) {
+			return CreateTexture3DUAV(Formats<T>::Value, width, height, depth, mips);
 		}
 
 #pragma endregion
@@ -15929,52 +15978,52 @@ namespace dx4xb {
 #pragma region Dispatching
 
 		template<typename T>
-		inline void Dispatch_Technique(gObj<T> technique) {
+		inline void ExecuteTechnique(gObj<T> technique) {
 			technique->OnDispatch();
 		}
 
-		void Dispatch_Process(gObj<GPUProcess> process);
+		void ExecuteProcess(gObj<GPUProcess> process);
 
-		void Dispatch_Process_Async(gObj<GPUProcess> process);
+		void ExecuteProcessAsync(gObj<GPUProcess> process);
 
 		template<typename T>
-		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
-			Dispatch_Process(new MethodAsGPUProcess<T, CopyManager>(instance, member));
+		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
+			ExecuteProcess(new MethodAsGPUProcess<T, CopyManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
-			Dispatch_Process(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
+		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
+			ExecuteProcess(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
-			Dispatch_Process(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
+		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
+			ExecuteProcess(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
-			Dispatch_Process(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
+		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
+			ExecuteProcess(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
-			Dispatch_Process_Async(new MethodAsGPUProcess<T, CopyManager>(instance, member));
+		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
+			ExecuteProcessAsync(new MethodAsGPUProcess<T, CopyManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
-			Dispatch_Process_Async(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
+		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
+			ExecuteProcessAsync(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
-			Dispatch_Process_Async(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
+		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
+			ExecuteProcessAsync(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
 		}
 
 		template<typename T>
-		void Dispatch_Method_Async(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
-			Dispatch_Process_Async(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
+		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
+			ExecuteProcessAsync(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
 		}
 	
 #pragma endregion

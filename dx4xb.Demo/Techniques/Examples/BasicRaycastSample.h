@@ -1,7 +1,7 @@
 #pragma once
 
 #include "dx4xb_scene.h"
-#include "gui_traits.h"
+#include "../../gui_traits.h"
 
 using namespace dx4xb;
 
@@ -31,7 +31,7 @@ public:
 			}
 
 			void Bindings(gObj<RaytracingBinder> binder) {
-				binder->Bindings_OnSet();
+				binder->OnSet();
 				binder->ADS(0, Context()->Scene);
 				binder->UAV(0, Context()->Output);
 				binder->CBV(0, Context()->Transforms);
@@ -65,12 +65,12 @@ public:
 		auto desc = scene->getScene();
 
 		// Allocate Memory for scene elements
-		VertexBuffer = Create_Buffer_SRV<SceneVertex>(desc->Vertices().Count);
-		IndexBuffer = Create_Buffer_SRV<int>(desc->Indices().Count);
-		Transforms = Create_Buffer_CB<TransformsCB>();
-		GeometryTransforms = Create_Buffer_SRV<float4x3>(desc->getTransformsBuffer().Count);
-		InstanceTransforms = Create_Buffer_SRV<float4x4>(desc->Instances().Count);
-		OutputImage = Create_Texture2D_UAV<RGBA>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		VertexBuffer = CreateBufferSRV<SceneVertex>(desc->Vertices().Count);
+		IndexBuffer = CreateBufferSRV<int>(desc->Indices().Count);
+		Transforms = CreateBufferCB<TransformsCB>();
+		GeometryTransforms = CreateBufferSRV<float4x3>(desc->getTransformsBuffer().Count);
+		InstanceTransforms = CreateBufferSRV<float4x4>(desc->Instances().Count);
+		OutputImage = CreateTexture2DUAV<RGBA>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
 		Load(pipeline);
 		pipeline->Transforms = Transforms;
@@ -81,37 +81,39 @@ public:
 		Execute_OnGPU(CreateSceneOnGPU);
 	}
 
-	void UpdateDirtyElements(gObj<GraphicsManager> manager) {
+	void UpdateDirtyElements(gObj<RaytracingManager> manager) {
 
 		auto elements = scene->Updated(sceneVersion);
 		auto desc = scene->getScene();
 
 		if (+(elements & SceneElement::Vertices))
 		{
-			VertexBuffer->Write_Ptr(desc->Vertices().Data);
-			manager->Load_AllToGPU(VertexBuffer);
+			VertexBuffer->Write(desc->Vertices().Data);
+			RaytracingManager* m;
+			((GraphicsManager*)m)->ToGPU(gObj<Buffer>());
+			manager->ToGPU(VertexBuffer);
 		}
 
 		if (+(elements & SceneElement::Indices))
 		{
-			IndexBuffer->Write_Ptr(desc->Indices().Data);
-			manager->Load_AllToGPU(IndexBuffer);
+			IndexBuffer->Write(desc->Indices().Data);
+			manager->ToGPU(IndexBuffer);
 		}
 
 		if (+(elements & SceneElement::Camera))
 		{
 			float4x4 proj, view;
 			scene->getCamera().GetMatrices(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), view, proj);
-			Transforms->Write_Value(TransformsCB{
+			Transforms->Write(TransformsCB{
 					mul(inverse(proj), inverse(view))
 				});
-			manager->Load_AllToGPU(Transforms);
+			manager->ToGPU(Transforms);
 		}
 
 		if (+(elements & SceneElement::GeometryTransforms))
 		{
-			GeometryTransforms->Write_Ptr(desc->getTransformsBuffer().Data);
-			manager->Load_AllToGPU(GeometryTransforms);
+			GeometryTransforms->Write(desc->getTransformsBuffer().Data);
+			manager->ToGPU(GeometryTransforms);
 		}
 
 		if (+(elements & SceneElement::InstanceTransforms))
@@ -120,8 +122,8 @@ public:
 			for (int i = 0; i < desc->Instances().Count; i++)
 				transforms[i] = desc->Instances().Data[i].Transform;
 
-			InstanceTransforms->Write_Ptr(transforms);
-			manager->Load_AllToGPU(InstanceTransforms);
+			InstanceTransforms->Write(transforms);
+			manager->ToGPU(InstanceTransforms);
 			delete[] transforms;
 		}
 	}
@@ -132,37 +134,37 @@ public:
 
 		auto desc = scene->getScene();
 
-		rtxScene = manager->Create_Intances();
+		rtxScene = manager->CreateIntances();
 		for (int i = 0; i < desc->Instances().Count; i++)
 		{
 			auto instance = desc->Instances().Data[i];
 
-			auto geometryCollection = manager->Create_TriangleGeometries();
-			geometryCollection->Set_Transforms(GeometryTransforms);
+			auto geometryCollection = manager->CreateTriangleGeometries();
+			geometryCollection->UseTransforms(GeometryTransforms);
 
 			for (int j = 0; j < instance.Count; j++) // load every geometry
 			{
 				auto geometry = desc->Geometries().Data[instance.GeometryIndices[j]];
 
 				if (IndexBuffer)
-					geometryCollection->Create_Geometry(
+					geometryCollection->CreateGeometry(
 						VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount),
 						IndexBuffer->Slice(geometry.StartIndex, geometry.IndexCount),
 						geometry.TransformIndex);
 				else
-					geometryCollection->Create_Geometry(
+					geometryCollection->CreateGeometry(
 						VertexBuffer->Slice(geometry.StartVertex, geometry.VertexCount),
 						geometry.TransformIndex);
 			}
 
-			manager->Load_Geometry(geometryCollection);
+			manager->ToGPU(geometryCollection, false, true);
 
-			rtxScene->Create_Instance(geometryCollection,
+			rtxScene->CreateInstance(geometryCollection,
 				255U, 0, i, (float4x3)instance.Transform
 			);
 		}
 
-		manager->Load_Scene(rtxScene, true, true);
+		manager->ToGPU(rtxScene, true, true);
 
 		pipeline->Scene = rtxScene;
 	}
@@ -184,27 +186,27 @@ public:
 		{
 			auto instance = desc->Instances().Data[i];
 
-			rtxScene->Load_InstanceTransform(i, (float4x3)instance.Transform);
+			rtxScene->UpdateTransform(i, (float4x3)instance.Transform);
 		}
 
-		manager->Load_Scene(rtxScene, true, true);
+		manager->ToGPU(rtxScene, true, true);
 	}
 
 	void DrawScene(gObj<RaytracingManager> manager) {
 
-		manager->Set_Pipeline(pipeline);
-		manager->Set_Program(pipeline->MainProgram);
+		manager->SetPipeline(pipeline);
+		manager->SetProgram(pipeline->MainProgram);
 
 		static bool firstTime = true;
 		if (firstTime) {
-			manager->Set_RayGeneration(pipeline->Generating);
-			manager->Set_Miss(pipeline->Missing, 0);
-			manager->Set_HitGroup(pipeline->Hitting, 0);
+			manager->SetRayGeneration(pipeline->Generating);
+			manager->SetMiss(pipeline->Missing, 0);
+			manager->SetHitGroup(pipeline->Hitting, 0);
 			firstTime = false;
 		}
 
-		manager->Dispatch_Rays(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		manager->DispatchRays(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
-		manager->Copy_Resource(CurrentRenderTarget(), OutputImage);
+		manager->Copy(CurrentRenderTarget(), OutputImage);
 	}
 };

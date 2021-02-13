@@ -26,9 +26,9 @@ struct TriangleSample : public Technique {
 		}
 
 		void Bindings(gObj<GraphicsBinder> binder) {
-			binder->Bindings_OnSet();
+			binder->OnSet();
 			{
-				binder->Bindings_PixelShader();
+				binder->PixelShader();
 				binder->RTV(0, RenderTarget);
 				binder->SRV(0, Texture);
 				binder->SMP_Static(0, Sampler::Linear());
@@ -40,29 +40,29 @@ struct TriangleSample : public Technique {
 
 	// Inherited via Technique
 	void OnLoad() override {
-		vertexBuffer = Create_Buffer_VB<Vertex>(4);
-		vertexBuffer->Write_List({
+		vertexBuffer = CreateBufferVB<Vertex>(4);
+		vertexBuffer->Write({
 			Vertex { float3(-1, -1, 0.5) },
 			Vertex { float3(1, -1, 0.5) },
 			Vertex { float3(1, 1, 0.5) },
 			Vertex { float3(-1, 1, 0.5) }
 			});
 
-		indexBuffer = Create_Buffer_IB<int>(6);
-		indexBuffer->Write_List({
+		indexBuffer = CreateBufferIB<int>(6);
+		indexBuffer->Write({
 			 0, 1, 2, 0, 2, 3
 			});
 
-		texture = Create_Texture2D_SRV<float4>(2, 2, 2, 1);
+		texture = CreateTexture2DSRV<float4>(2, 2, 2, 1);
 		float4 pixels[] = {
 				float4(1,0,0,1), float4(1,1,0,1),
 				float4(0,1,0,1), float4(0,0,1,1),
 				float4(1,0,1,1)
 		};
-		texture->Write_Ptr(pixels);
+		texture->Write(pixels);
 
 		float4 pixel = float4(1, 0, 1, 1);
-		texture->Write_Element(0, 0, pixel);
+		texture->WriteElement(0, 0, pixel);
 
 		Load(pipeline);
 
@@ -70,9 +70,9 @@ struct TriangleSample : public Technique {
 	}
 
 	void LoadAssets(gObj<CopyManager> manager) {
-		manager->Load_AllToGPU(vertexBuffer);
-		manager->Load_AllToGPU(indexBuffer);
-		manager->Load_AllToGPU(texture);
+		manager->ToGPU(vertexBuffer);
+		manager->ToGPU(indexBuffer);
+		manager->ToGPU(texture);
 	}
 
 	void OnDispatch() override {
@@ -84,14 +84,14 @@ struct TriangleSample : public Technique {
 		frame++;
 		pipeline->RenderTarget = CurrentRenderTarget();
 		pipeline->Texture = texture;
-		manager->Set_Pipeline(pipeline);
-		manager->Set_VertexBuffer(vertexBuffer);
-		manager->Set_IndexBuffer(indexBuffer->Slice(3, 3));
-		manager->Set_Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		manager->SetPipeline(pipeline);
+		manager->VertexBuffer(vertexBuffer);
+		manager->IndexBuffer(indexBuffer->Slice(3, 3));
+		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
-		manager->Clear_RT(CurrentRenderTarget(), float3(0.2f, sin(frame * 0.001), 0.5f));
+		manager->ClearRenderTarget(CurrentRenderTarget(), float3(0.2f, sin(frame * 0.001), 0.5f));
 
-		manager->Dispatch_IndexedTriangles(3);
+		manager->DrawIndexedTriangles(3);
 	}
 
 };
