@@ -2,10 +2,11 @@
 
 #include "dx4xb_scene.h"
 #include "../../gui_traits.h"
+#include "../Tools/Parameters.h"
 
 using namespace dx4xb;
 
-class PathtracingTechniqueBase : public Technique, public IManageScene {
+class PathtracingTechniqueBase : public Technique, public IManageScene, public IGatherImageStatistics {
 
 public:
 	virtual ~PathtracingTechniqueBase() {}
@@ -165,8 +166,14 @@ public:
 		pipeline->Lighting = CreateBufferCB<LightingCB>();
 		pipeline->ProjectionToWorld = CreateBufferCB<float4x4>();
 		pipeline->AccumulativeInfo = {};
+
+#ifdef SHOW_COMPLEXITY
+		pipeline->AccumulativeInfo.ShowComplexity = 1;
+		pipeline->AccumulativeInfo.PathtracingRatio = 0.5;
+#else
 		pipeline->AccumulativeInfo.ShowComplexity = 0;
 		pipeline->AccumulativeInfo.PathtracingRatio = 0.0;
+#endif
 
 		Execute_OnGPU(LoadAssets);
 

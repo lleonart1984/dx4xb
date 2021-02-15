@@ -1,25 +1,28 @@
 #include <Windows.h>
-#include "dx4xb.h"
+#include "dx4xb_scene.h"
+#include "shlobj.h"
 
 #include "ImGui/imgui.h"
 #include "ImGui/imgui_impl_win32.h"
 #include "ImGui/imgui_impl_dx12.h"
 
-#include "scenes.h"
-
-#include "Techniques/Examples/ClearRTSampleTechnique.h"
-#include "Techniques/Examples/DemoTechnique.h"
-#include "Techniques/Examples/BasicSceneTechnique.h"
-#include "Techniques/Examples/DepthComplexityTechnique.h"
-#include "Techniques/Examples/BasicRaycastSample.h"
-#include "Techniques/Pathtracing/PathtracingTechnique.h"
-#include "Techniques/Pathtracing/NEEPathtracingTechnique.h"
-#include "Techniques/CVAEPathtracing/CVAEPathtracingTechnique.h"
-#include "Techniques/CVAEPathtracing/NEECVAEPathtracingTechnique.h"
-#include "Techniques/CVAEPathtracing/STFTechnique.h"
-#include "Techniques/CVAEPathtracing/STFXTechnique.h"
-
 using namespace dx4xb;
+
+dx4xb::string desktop_directory()
+{
+	static char path[MAX_PATH + 1];
+	SHGetSpecialFolderPathA(HWND_DESKTOP, path, CSIDL_DESKTOP, FALSE);
+	return dx4xb::string(path);
+}
+
+#include "Teasser.h"
+//#include "Comparisons.h"
+//#include "ComparisonsLucy.h"
+//#include "ComplexityBunny.h"
+//#include "ComplexityLucy.h"
+//#include "Absorptions.h"
+//#include "NEETests.h"
+
 
 #define USE_GUI
 #define SAVE_STATS
@@ -92,14 +95,11 @@ public:
 // Main code
 int main(int, char**)
 {
-	int ClientWidth = 1264;
-	int ClientHeight = 761;
-
 	// Create application window
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, TEXT("CA4G Example"), NULL };
 	::RegisterClassEx(&wc);
 	HWND hwnd = ::CreateWindow(wc.lpszClassName, TEXT("DirectX12 Example with dx4xb"), WS_OVERLAPPEDWINDOW, 100, 100,
-		ClientWidth + (1280 - 1264), ClientHeight + (800 - 761),
+		IMAGE_WIDTH + (1280 - 1264), IMAGE_HEIGHT + (800 - 761),
 		NULL, NULL, wc.hInstance, NULL);
 
 	// Show the window
@@ -146,27 +146,21 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<PathtracingTechnique> technique = new PathtracingTechnique();
-	//gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
-	//gObj<CVAEPathtracingTechnique> technique = new CVAEPathtracingTechnique();
-	//gObj<NEECVAEPathtracingTechnique> technique = new NEECVAEPathtracingTechnique();
-	//gObj<STFTechnique> technique = new STFTechnique();
-	//gObj<STFXTechnique> technique = new STFXTechnique();
-	
+	gObj<Technique> technique = new USED_TECHNIQUE();
 	gObj<ScreenShotTechnique> takingScreenshot;
 	gObj<ImageSavingTechnique> savingStats;
 
-	gObj<SceneManager> scene = new LucyAndDrago2();
+	gObj<SceneManager> scene = new USED_SCENE();
 	scene->SetupScene();
 
 	if (technique.Dynamic_Cast<IManageScene>())
-		technique->SetSceneManager(scene);
+		technique.Dynamic_Cast<IManageScene>()->SetSceneManager(scene);
 
 	presenter->Load(technique);
 
 	presenter->Load(takingScreenshot);
 	presenter->Load(savingStats);
-	
+
 	// Main graphics loop
 	MSG msg;
 	ZeroMemory(&msg, sizeof(msg));
@@ -189,12 +183,12 @@ int main(int, char**)
 
 		if (true)
 		{
-			ImGui::Begin("Stats");                          
+			ImGui::Begin("Stats");
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 			ImGui::End();
 		}
 #endif
-		
+
 		presenter->ExecuteTechnique(technique);
 
 #ifdef SAVE_STATS

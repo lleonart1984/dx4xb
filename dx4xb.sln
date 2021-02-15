@@ -9,6 +9,10 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectXTex", "Libraries\Dir
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dx4xb.Demo", "dx4xb.Demo\dx4xb.Demo.vcxproj", "{E8075DE6-358E-40F5-804D-084FC9D16C7B}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dx4xb.Techniques", "dx4xb.Techniques\dx4xb.Techniques.vcxproj", "{4D593767-1F40-4848-80D7-0E6C28A7D837}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Eurographics.CVAE_ST", "Eurographics.CVAE_ST\Eurographics.CVAE_ST.vcxproj", "{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -55,6 +59,30 @@ Global
 		{E8075DE6-358E-40F5-804D-084FC9D16C7B}.Release|x64.Build.0 = Release|x64
 		{E8075DE6-358E-40F5-804D-084FC9D16C7B}.Release|x86.ActiveCfg = Release|Win32
 		{E8075DE6-358E-40F5-804D-084FC9D16C7B}.Release|x86.Build.0 = Release|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Debug|x64.ActiveCfg = Debug|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Debug|x64.Build.0 = Debug|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Debug|x86.ActiveCfg = Debug|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Debug|x86.Build.0 = Debug|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Profile|x64.ActiveCfg = Debug|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Profile|x64.Build.0 = Debug|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Profile|x86.ActiveCfg = Debug|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Profile|x86.Build.0 = Debug|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Release|x64.ActiveCfg = Release|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Release|x64.Build.0 = Release|x64
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Release|x86.ActiveCfg = Release|Win32
+		{4D593767-1F40-4848-80D7-0E6C28A7D837}.Release|x86.Build.0 = Release|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Debug|x64.ActiveCfg = Debug|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Debug|x64.Build.0 = Debug|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Debug|x86.ActiveCfg = Debug|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Debug|x86.Build.0 = Debug|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Profile|x64.ActiveCfg = Debug|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Profile|x64.Build.0 = Debug|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Profile|x86.ActiveCfg = Debug|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Profile|x86.Build.0 = Debug|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Release|x64.ActiveCfg = Release|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Release|x64.Build.0 = Release|x64
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Release|x86.ActiveCfg = Release|Win32
+		{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

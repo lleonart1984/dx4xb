@@ -16043,9 +16043,9 @@ namespace dx4xb {
 		void OnCreate(wDevice* w_device);
 
 	protected:
-		virtual void OnLoad() = 0;
+		virtual void OnLoad() {};
 
-		virtual void OnDispatch() = 0;
+		virtual void OnDispatch() {};
 	};
 
 	class Presenter : public DeviceManager

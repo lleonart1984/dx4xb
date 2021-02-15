@@ -1,7 +1,10 @@
 #include "STBase_RT.h"
 
-//#include "CVAEScatteringModel.h"
+#ifdef USE_CVAE_X
 #include "CVAEScatteringModelX.h"
+#else
+#include "CVAEScatteringModel.h"
+#endif
 
 float sampleNormal(float mu, float logVar) {
 	//return mu + gauss() * exp(logVar * 0.5);

@@ -24,7 +24,7 @@
     <ClInclude Include="Resource.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="dx4xb.Demo.h">
+    <ClInclude Include="Eurographics.CVAE_ST.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ImGui\imconfig.h">
@@ -51,12 +51,30 @@
     <ClInclude Include="ImGui\imstb_truetype.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="scenes.h">
+    <ClInclude Include="Teasser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Comparisons.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ComparisonsLucy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ComplexityBunny.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ComplexityLucy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Absorptions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="NEETests.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="dx4xb.Demo.cpp">
+    <ClCompile Include="Eurographics.CVAE_ST.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="ImGui\imgui.cpp">
@@ -79,7 +97,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="dx4xb.Demo.rc">
+    <ResourceCompile Include="Eurographics.CVAE_ST.rc">
       <Filter>Resource Files</Filter>
     </ResourceCompile>
   </ItemGroup>
@@ -87,7 +105,7 @@
     <Image Include="small.ico">
       <Filter>Resource Files</Filter>
     </Image>
-    <Image Include="dx4xb.Demo.ico">
+    <Image Include="Eurographics.CVAE_ST.ico">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>
