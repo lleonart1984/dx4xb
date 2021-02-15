@@ -14,6 +14,10 @@
 #include "Techniques/Examples/BasicRaycastSample.h"
 #include "Techniques/Pathtracing/PathtracingTechnique.h"
 #include "Techniques/Pathtracing/NEEPathtracingTechnique.h"
+#include "Techniques/CVAEPathtracing/CVAEPathtracingTechnique.h"
+#include "Techniques/CVAEPathtracing/NEECVAEPathtracingTechnique.h"
+#include "Techniques/CVAEPathtracing/STFTechnique.h"
+#include "Techniques/CVAEPathtracing/STFXTechnique.h"
 
 using namespace dx4xb;
 
@@ -82,7 +86,12 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
+	//gObj<PathtracingTechnique> technique = new PathtracingTechnique();
+	//gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
+	//gObj<CVAEPathtracingTechnique> technique = new CVAEPathtracingTechnique();
+	//gObj<NEECVAEPathtracingTechnique> technique = new NEECVAEPathtracingTechnique();
+	//gObj<STFTechnique> technique = new STFTechnique();
+	gObj<STFXTechnique> technique = new STFXTechnique();
 	
 	gObj<SceneManager> scene = new LucyAndDrago2();
 	scene->SetupScene();

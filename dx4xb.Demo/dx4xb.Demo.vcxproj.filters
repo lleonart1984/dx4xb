@@ -114,6 +114,30 @@
     <ClInclude Include="Techniques\Pathtracing\PathtracingCommon_RT.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModelX.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\NEECVAEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STFTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STFXTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\SphereTracingBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STBase_RT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dx4xb.Demo.cpp">
@@ -163,5 +187,13 @@
     <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
     <FxCompile Include="Techniques\Pathtracing\NEEPathtracing_RT.hlsl" />
     <FxCompile Include="Techniques\Pathtracing\Pathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DebugDF_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldInitial_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldSpread_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\NEECVAEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\STFPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\STFXPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\TriangleGrid_CS.hlsl" />
   </ItemGroup>
 </Project>

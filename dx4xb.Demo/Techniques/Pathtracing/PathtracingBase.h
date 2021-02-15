@@ -165,6 +165,8 @@ public:
 		pipeline->Lighting = CreateBufferCB<LightingCB>();
 		pipeline->ProjectionToWorld = CreateBufferCB<float4x4>();
 		pipeline->AccumulativeInfo = {};
+		pipeline->AccumulativeInfo.ShowComplexity = 0;
+		pipeline->AccumulativeInfo.PathtracingRatio = 0.0;
 
 		Execute_OnGPU(LoadAssets);
 
@@ -178,7 +180,7 @@ public:
 
 	virtual void OnDispatch() override {
 		// Update dirty elements
-		Execute_OnGPU(UpdateAssets);
+		//Execute_OnGPU(UpdateAssets);
 		// Draw current Frame
 		Execute_OnGPU(DrawScene);
 	}
@@ -192,7 +194,7 @@ public:
 			pipeline->AccumulativeInfo.Pass = 0; // restart frame for Pathtracing...
 	}
 
-	void UpdateBuffers(gObj<GraphicsManager> manager, SceneElement elements) {
+	virtual void UpdateBuffers(gObj<GraphicsManager> manager, SceneElement elements) {
 		auto desc = scene->getScene();
 
 		if (+(elements & SceneElement::Vertices))
@@ -358,7 +360,7 @@ public:
 
 		if (pipeline->AccumulativeInfo.Pass == 0) // first frame after scene dirty
 		{
-			pipeline->AccumulativeInfo.PathtracingRatio = 1;
+			//pipeline->AccumulativeInfo.PathtracingRatio = 1;
 			pipeline->AccumulativeInfo.Pass = 0;
 			manager->ClearUAV(pipeline->Accumulation, uint4(0));
 			manager->ClearUAV(pipeline->Complexity, uint4(0));

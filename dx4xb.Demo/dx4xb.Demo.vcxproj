@@ -167,6 +167,14 @@
     <ClInclude Include="Resource.h" />
     <ClInclude Include="scenes.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEPathtracingTechnique.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModel.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModelX.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\NEECVAEPathtracingTechnique.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\SphereTracingBase.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\STBase_RT.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\STFTechnique.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\STFXTechnique.h" />
     <ClInclude Include="Techniques\Examples\BasicRaycastSample.h" />
     <ClInclude Include="Techniques\Examples\BasicSceneTechnique.h" />
     <ClInclude Include="Techniques\Examples\ClearRTSampleTechnique.h" />
@@ -210,6 +218,54 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEPathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\DebugDF_CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldInitial_CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldSpread_CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\NEECVAEPathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\STFPathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\STFXPathtracing_RT.hlsl">
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\TriangleGrid_CS.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+    </FxCompile>
     <FxCompile Include="Techniques\Examples\Basic_PS.hlsl">
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Pixel</ShaderType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>

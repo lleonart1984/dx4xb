@@ -28,7 +28,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 		RayPayload payload = (RayPayload)0;
 		if (!Intersect(x, w, payload)) // 
-			return directContribution + 0.5 * importance * (SampleSkybox(w) + SampleLight(w) * (complexity <= 2));
+			return directContribution + importance * (SampleSkybox(w) + SampleLight(w) * (complexity <= 2));
 
 		Vertex surfel = (Vertex)0;
 		Material material = (Material)0;
