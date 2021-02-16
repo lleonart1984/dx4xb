@@ -2549,35 +2549,35 @@ namespace dx4xb {
 			w_view->createSlicedClone(0, 0, start, count));
 	}
 
-	gObj<Texture1D> Texture1D::Slice_Mips(int start, int count) const {
+	gObj<Texture1D> Texture1D::SliceMips(int start, int count) const {
 		return new Texture1D(
 			w_view->w_device,
 			w_resource,
 			w_view->createSlicedClone(start, count, 0, 0));
 	}
 
-	gObj<Texture1D> Texture1D::Slice_Array(int start, int count) const {
+	gObj<Texture1D> Texture1D::SliceArray(int start, int count) const {
 		return new Texture1D(
 			w_view->w_device,
 			w_resource,
 			w_view->createSlicedClone(0, 0, start, count));
 	}
 
-	gObj<Texture2D> Texture2D::Slice_Mips(int start, int count) const {
+	gObj<Texture2D> Texture2D::SliceMips(int start, int count) const {
 		return new Texture2D(
 			w_view->w_device,
 			w_resource,
 			w_view->createSlicedClone(start, count, 0, 0));
 	}
 
-	gObj<Texture2D> Texture2D::Slice_Array(int start, int count) const {
+	gObj<Texture2D> Texture2D::SliceArray(int start, int count) const {
 		return new Texture2D(
 			w_view->w_device,
 			w_resource,
 			w_view->createSlicedClone(0, 0, start, count));
 	}
 
-	gObj<Texture3D> Texture3D::Slice_Mips(int start, int count) const {
+	gObj<Texture3D> Texture3D::SliceMips(int start, int count) const {
 		return new Texture3D(
 			w_view->w_device,
 			w_resource,

@@ -13,6 +13,11 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dx4xb.Techniques", "dx4xb.T
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Eurographics.CVAE_ST", "Eurographics.CVAE_ST\Eurographics.CVAE_ST.vcxproj", "{CAD86F56-7B56-4AC2-89A9-50B494B06E0E}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{00A7CE67-8C70-45D0-9275-45A77000AF63}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64

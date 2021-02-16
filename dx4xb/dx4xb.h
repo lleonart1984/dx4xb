@@ -5569,12 +5569,12 @@ namespace dx4xb {
 		// Gets the number of mips of this Texture1D
 		unsigned int Mips() const;
 
-		gObj<Texture1D> Slice_Mips(int start, int count) const;
+		gObj<Texture1D> SliceMips(int start, int count) const;
 
-		gObj<Texture1D> Slice_Array(int start, int count) const;
+		gObj<Texture1D> SliceArray(int start, int count) const;
 
 		gObj<Texture1D> Subresource(int mip, int arrayIndex) const {
-			return Slice_Array(arrayIndex, 1)->Slice_Mips(mip, 1);
+			return SliceArray(arrayIndex, 1)->SliceMips(mip, 1);
 		}
 
 		template<typename T>
@@ -5612,12 +5612,12 @@ namespace dx4xb {
 		// Gets the number of mips of this Texture2D
 		unsigned int Mips() const;
 
-		gObj<Texture2D> Slice_Mips(int start, int count) const;
+		gObj<Texture2D> SliceMips(int start, int count) const;
 
-		gObj<Texture2D> Slice_Array(int start, int count) const;
+		gObj<Texture2D> SliceArray(int start, int count) const;
 
 		gObj<Texture2D> Subresource(int mip, int arrayIndex) const {
-			return Slice_Array(arrayIndex, 1)->Slice_Mips(mip, 1);
+			return SliceArray(arrayIndex, 1)->SliceMips(mip, 1);
 		}
 
 		template<typename T>
@@ -5650,7 +5650,7 @@ namespace dx4xb {
 		// Gets the number of mips of this Texture3D
 		unsigned int Mips() const;
 
-		gObj<Texture3D> Slice_Mips(int start, int count) const;
+		gObj<Texture3D> SliceMips(int start, int count) const;
 
 		template<typename T>
 		void WriteElement(int tx, int ty, int tz, const T& value, int mip = 0) {
