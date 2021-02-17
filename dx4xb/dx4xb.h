@@ -61,27 +61,27 @@ namespace dx4xb {
 	// Public definitions
 
 	struct PresenterDescription;
-	class GPUProcess; // Defines types can populate command lists for further GPU execution
-	class DeviceManager; // Defines base type for entities that can create resources and dispatch GPU processes
-	class Technique; // Defines types can create resources and dispatch GPU processes
-	class Presenter; // Defines a Device manager that can control swap chains and presenting buffers
-	class CommandListManager;
-	class CopyManager;
-	class ComputeManager;
-	class GraphicsManager;
-	class RaytracingManager;
-	class Pipeline;
-	class StaticPipelineBase;
-	template<typename ...PSS> class StaticPipeline;
-	class RaytracingPipeline;
-	class RaytracingProgramBase;
-	class ComputeBinder;
-	class GraphicsBinder;
-	class RaytracingBinder;
-	class GeometryCollection;
-	class TriangleGeometryCollection;
-	class ProceduralGeometryCollection;
-	class InstanceCollection;
+	class GPUProcess; // Common interface of objects with the role of populate command lists for further GPU execution
+	class DeviceManager; // Defines base type for entities that can create resources and dispatch GPU processes and synchronize GPU-CPU work.
+	class Technique; // DeviceManager intended to be speciallized to create different techniques.
+	class Presenter; // Defines a DeviceManager that can control swap chains and present back buffers.
+	class CommandListManager; // Base class of all command list managers
+	class CopyManager; // Encapsulates a DX12 copy engine.
+	class ComputeManager; // Encapsulates a DX12 compute engine.
+	class GraphicsManager; // Encapsulates a DX12 direct engine.
+	class RaytracingManager; // Encapsulates a DX12 direct engine with DXR support.
+	class Pipeline; // Abstract pipeline concept used to define root signatures and perform resource bindings.
+	class StaticPipelineBase; // Pipeline base for all static pipeline states (traditional DX12 pipeline).
+	template<typename ...PSS> class StaticPipeline; // Mixing strategy to define a static pipeline state.
+	class RaytracingPipeline; // Pipeline base for all dynamic state objects (new DX12 state object).
+	class RaytracingProgramBase; // Base definition of a DXR program. A DXR Program encapsulates shader handles, shader tables and other DXR objects.
+	class ComputeBinder; // Binding object used to collect resources bindings and construct root signatures.
+	class GraphicsBinder; // Binder speciallized for graphics pipelines.
+	class RaytracingBinder; // Binder speciallized for raytracing pipelines.
+	class GeometryCollection; // Encapsulates a bottom level DX12 ADS.
+	class TriangleGeometryCollection; // Encapsulates a geometry collection of triangles.
+	class ProceduralGeometryCollection; // Encapsulates a geometry collection of procedural geometries.
+	class InstanceCollection; // Encapsulates a top level DX12 ADS
 
 #pragma endregion
 
@@ -92,6 +92,9 @@ namespace dx4xb {
 
 #define Execute_OnGPU(methodName) ExecuteMethod(this, &decltype(___dr(this))::methodName)
 #define Execute_OnGPU_Async(methodName) ExecuteMethodAsync(this, &decltype(___dr(this))::methodName)
+#define RT_Width CurrentRenderTarget()->Width()
+#define RT_Height CurrentRenderTarget()->Height()
+#define CPU_waits_GPU Flush().WaitFor()
 
 #pragma endregion
 
@@ -121,6 +124,9 @@ namespace dx4xb {
 	public:
 		Exception(const char* const message) :std::exception(message) {}
 
+		/// <summary>
+		/// Creates an Exception object from a special error and message.
+		/// </summary>
 		static Exception FromError(Errors error, const char* arg = nullptr, HRESULT hr = S_OK);
 	};
 
@@ -4335,8 +4341,10 @@ namespace dx4xb {
 		{
 			return Translate(vec.x, vec.y, vec.z);
 		}
-		//
-
+		
+		/// <summary>
+		/// Builds a 4x4 matrix transform from an affine transformation.
+		/// </summary>
 		static float4x4 FromAffine(float4x3 affine) {
 			return float4x4(
 				affine._m00, affine._m01, affine._m02, 0,
@@ -4759,16 +4767,15 @@ namespace dx4xb {
 
 		string(const char* text) {
 			if (text == nullptr) {
-				text = nullptr;
-				length = -1;
-				references = nullptr;
+				this->text = nullptr;
+				this->length = -1;
+				this->references = nullptr;
 			}
 			else
 			{
 				this->length = (int)strlen(text);
 				this->text = new char[this->length + 1];
 				ZeroMemory(this->text, this->length + 1);
-
 				strcpy_s(this->text, this->length + 1, text);
 				this->references = new int(1);
 			}
@@ -5131,6 +5138,10 @@ namespace dx4xb {
 
 #pragma region Color Formats
 
+	/// <summary>
+	/// Represents a rgb color in the format ARGB color coded as an integer.
+	/// Similar to DXGI_FORMAT_B8G8R8A8_UNORM dxgi format.
+	/// </summary>
 	typedef struct ARGB
 	{
 		unsigned int value;
@@ -5151,6 +5162,10 @@ namespace dx4xb {
 		}
 	} ARGB;
 
+	/// <summary>
+	/// Represents a rgb color in the format RGBA color coded as an integer.
+	/// Similar to DXGI_FORMAT_R8G8B8A8_UNORM dxgi format.
+	/// </summary>
 	typedef struct RGBA
 	{
 		unsigned int value;
@@ -5279,6 +5294,9 @@ namespace dx4xb {
 
 #pragma endregion
 
+	/// <summary>
+	/// Represents the accessibility of writing or reading a resource content directly from the CPU.
+	/// </summary>
 	enum class CPUAccessibility {
 		// The resource can not be read or write directly from the CPU.
 		// A stagging internal version is used for so.
@@ -5344,6 +5362,7 @@ namespace dx4xb {
 				AddressW);
 		}
 
+		// Creates a linear sampling object without mip levels.
 		static Sampler LinearWithoutMipMaps(
 			D3D12_TEXTURE_ADDRESS_MODE AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
 			D3D12_TEXTURE_ADDRESS_MODE AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
@@ -5369,6 +5388,9 @@ namespace dx4xb {
 				AddressW);
 		}
 	private:
+		/// <summary>
+		/// Factory method to create samplers
+		/// </summary>
 		static Sampler Create(
 			D3D12_FILTER filter = D3D12_FILTER_MIN_MAG_MIP_POINT,
 			D3D12_TEXTURE_ADDRESS_MODE AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP,
@@ -5396,6 +5418,9 @@ namespace dx4xb {
 		}
 	};
 
+	/// <summary>
+	/// Base class for all resource views. Posible derived types are Buffer, Texture1D, Texture2D and Texture3D.
+	/// </summary>
 	class ResourceView {
 		friend wDevice;
 		friend CopyManager;
@@ -5511,6 +5536,9 @@ namespace dx4xb {
 		}
 	};
 
+	/// <summary>
+	/// Represents a structured buffer.
+	/// </summary>
 	class Buffer : public ResourceView {
 		friend DeviceManager;
 
@@ -5545,6 +5573,9 @@ namespace dx4xb {
 		gObj<Buffer> Slice(int start, int count) const;
 	};
 
+	/// <summary>
+	/// Represents a one-dimensional texture.
+	/// </summary>
 	class Texture1D : public ResourceView {
 		friend DeviceManager;
 
@@ -5569,10 +5600,19 @@ namespace dx4xb {
 		// Gets the number of mips of this Texture1D
 		unsigned int Mips() const;
 
+		/// <summary>
+		/// Gets the subresources representing mips from start taking count
+		/// </summary>
 		gObj<Texture1D> SliceMips(int start, int count) const;
 
+		/// <summary>
+		/// Gets the subresources representing array from start taking count
+		/// </summary>
 		gObj<Texture1D> SliceArray(int start, int count) const;
 
+		/// <summary>
+		/// Gets a specific subresource given the mip level and the array index.
+		/// </summary>
 		gObj<Texture1D> Subresource(int mip, int arrayIndex) const {
 			return SliceArray(arrayIndex, 1)->SliceMips(mip, 1);
 		}
@@ -5585,6 +5625,9 @@ namespace dx4xb {
 		}
 	};
 
+	/// <summary>
+	/// Represents a bi-dimensional texture
+	/// </summary>
 	class Texture2D : public ResourceView {
 		friend DeviceManager;
 		friend wDevice;
@@ -5612,10 +5655,19 @@ namespace dx4xb {
 		// Gets the number of mips of this Texture2D
 		unsigned int Mips() const;
 
+		/// <summary>
+		/// Gets the subresources representing mips from start taking count
+		/// </summary>
 		gObj<Texture2D> SliceMips(int start, int count) const;
 
+		/// <summary>
+		/// Gets the subresources representing array from start taking count
+		/// </summary>
 		gObj<Texture2D> SliceArray(int start, int count) const;
 
+		/// <summary>
+		/// Gets a specific subresource given the mip level and the array index.
+		/// </summary>
 		gObj<Texture2D> Subresource(int mip, int arrayIndex) const {
 			return SliceArray(arrayIndex, 1)->SliceMips(mip, 1);
 		}
@@ -5628,6 +5680,9 @@ namespace dx4xb {
 		}
 	};
 
+	/// <summary>
+	/// Represents a three-dimensional texture
+	/// </summary>
 	class Texture3D : public ResourceView {
 		friend DeviceManager;
 
@@ -5649,7 +5704,10 @@ namespace dx4xb {
 		unsigned int Depth() const;
 		// Gets the number of mips of this Texture3D
 		unsigned int Mips() const;
-
+	
+		/// <summary>
+		/// Gets the subresources from start mip taking count.
+		/// </summary>
 		gObj<Texture3D> SliceMips(int start, int count) const;
 
 		template<typename T>
@@ -5680,10 +5738,20 @@ namespace dx4xb {
 		long rallyPoints[3] = { };
 		wScheduler* scheduler = nullptr;
 	public:
+		/// <summary>
+		/// Empty signaling. Do nothing if wait for.
+		/// </summary>
 		Signal() {}
+
+		/// <summary>
+		/// When this method is called, the current thread stay waiting until all the enqueue commands terminates on the GPU.
+		/// </summary>
 		void WaitFor();
 	};
 
+	/// <summary>
+	/// Bit mask of engines that can be signaled.
+	/// </summary>
 	enum class EngineMask : int {
 		Direct = 1,
 		Compute = 2,
@@ -13993,14 +14061,38 @@ namespace dx4xb {
 		/*Float*/{ DXGI_FORMAT_R32_FLOAT, DXGI_FORMAT_R32G32_FLOAT, DXGI_FORMAT_R32G32B32_FLOAT,DXGI_FORMAT_R32G32B32A32_FLOAT },
 	};
 
+	/// <summary>
+	/// Represent the most common semantic used.
+	/// </summary>
 	enum class VertexElementSemantic
 	{
+		/// <summary>
+		/// The semantic is expressed as a custom string
+		/// </summary>
 		Custom,
+		/// <summary>
+		/// POSITION
+		/// </summary>
 		Position,
+		/// <summary>
+		/// NORMAL
+		/// </summary>
 		Normal,
+		/// <summary>
+		/// TEXCOORD
+		/// </summary>
 		TexCoord,
+		/// <summary>
+		/// TANGENT
+		/// </summary>
 		Tangent,
+		/// <summary>
+		/// BINORMAL
+		/// </summary>
 		Binormal,
+		/// <summary>
+		/// COLOR
+		/// </summary>
 		Color
 	};
 
@@ -14059,11 +14151,15 @@ namespace dx4xb {
 		{
 		}
 
+		/// <summary>
+		/// Gets the vertex format considering the element type and the number of components.
+		/// </summary>
 		constexpr DXGI_FORMAT Format() const {
 			return TYPE_VS_COMPONENTS_FORMATS[(int)Type][Components - 1];
 		}
 
 		// Creates a Dx12 description using this information.
+		// The value size is incremented depending on the size of the vertex element in bytes
 		D3D12_INPUT_ELEMENT_DESC createDesc(int offset, int& size) const {
 			D3D12_INPUT_ELEMENT_DESC d = {};
 			d.AlignedByteOffset = offset;
@@ -14081,6 +14177,9 @@ namespace dx4xb {
 
 #pragma region Shader handles
 
+	/// <summary>
+	/// Base type for all shader handles
+	/// </summary>
 	class ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14098,6 +14197,10 @@ namespace dx4xb {
 		inline bool IsNull() { return shaderHandle == nullptr; }
 	};
 
+
+	/// <summary>
+	/// Handle refering to a miss shader.
+	/// </summary>
 	class MissHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14108,6 +14211,9 @@ namespace dx4xb {
 		MissHandle(const MissHandle& other) : ProgramHandle(other) { }
 	};
 
+	/// <summary>
+	/// Handle refering to a raygeneration shader
+	/// </summary>
 	class RayGenerationHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14118,6 +14224,9 @@ namespace dx4xb {
 		RayGenerationHandle(const RayGenerationHandle& other) : ProgramHandle(other) { }
 	};
 
+	/// <summary>
+	/// Handle refering to a anyhit shader
+	/// </summary>
 	class AnyHitHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14128,6 +14237,9 @@ namespace dx4xb {
 		AnyHitHandle(const AnyHitHandle& other) : ProgramHandle(other) { }
 	};
 
+	/// <summary>
+	/// Handle refering to a closesthit shader
+	/// </summary>
 	class ClosestHitHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14138,6 +14250,9 @@ namespace dx4xb {
 		ClosestHitHandle(const ClosestHitHandle& other) : ProgramHandle(other) { }
 	};
 
+	/// <summary>
+	/// Handle refering to a intersection shader
+	/// </summary>
 	class IntersectionHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14148,6 +14263,9 @@ namespace dx4xb {
 		IntersectionHandle(const IntersectionHandle& other) : ProgramHandle(other) { }
 	};
 
+	/// <summary>
+	/// Handle refering to a group of hit shaders (closest, any and intersection)
+	/// </summary>
 	class HitGroupHandle : public ProgramHandle {
 		friend RaytracingPipeline;
 		friend RaytracingProgramBase;
@@ -14193,14 +14311,35 @@ namespace dx4xb {
 		friend GraphicsManager;
 		friend RaytracingManager;
 	protected:
+		/// <summary>
+		/// Gets the engine used for this pipeline.
+		/// Derived raytracing pipeline will use compute engine but static pipelines (or custom designed pipeline) might use direct or compute.
+		/// </summary>
+		/// <returns></returns>
 		virtual Engine GetEngine() = 0;
+		/// <summary>
+		/// Method called when the pipeline is loaded.
+		/// Implement to create pipeline state or state object.
+		/// </summary>
 		virtual void OnCreate(wDevice* w_device) = 0;
+		/// <summary>
+		/// Method called when the pipeline is set.
+		/// Implement to bind globals resources.
+		/// </summary>
 		virtual void OnSet(wCmdList* w_cmdList) = 0;
+		/// <summary>
+		/// Method called before any dispatch when this pipeline is active.
+		/// Implement to bind local resources.
+		/// </summary>
 		virtual void OnDispatch(wCmdList* w_cmdList) = 0;
 	};
 
 #pragma region Binders
 
+	/// <summary>
+	/// Represents a class that must be used to collect resource bindings for a pipeline.
+	/// All bindings methods grabs a reference to a field for future resolution of the bound resource when set or dispatch.
+	/// </summary>
 	class ComputeBinder {
 		friend StaticPipelineBase;
 		friend RaytracingPipeline;
@@ -14210,6 +14349,9 @@ namespace dx4xb {
 		friend RaytracingManager;
 		friend class DX_RTProgram;
 
+		/// <summary>
+		/// Uses all bound fields (types specifically) to construct the root signature for this binder.
+		/// </summary>
 		void CreateSignature(
 			DX_Device device,
 			D3D12_ROOT_SIGNATURE_FLAGS flags,
@@ -14220,8 +14362,17 @@ namespace dx4xb {
 	protected:
 		wBindings* __InternalBindingObject;
 	
+		/// <summary>
+		/// Visibility used for next bindings.
+		/// </summary>
 		D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY::D3D12_SHADER_VISIBILITY_ALL;
+		/// <summary>
+		/// Space used for next bindings.
+		/// </summary>
 		int space = 0;
+		/// <summary>
+		/// Gets or sets whenever next bindings are for set (global) or dispatch (local).
+		/// </summary>
 		bool collectGlobal = true;
 
 		void AddConstant(int slot, void* data, int size);
@@ -14887,14 +15038,24 @@ namespace dx4xb {
 
 		wPipelineState* w_pipeline;
 
+		/// <summary>
+		/// When implemented gets the reference to the pipeline state object with all states.
+		/// </summary>
 		virtual void* getSettingObject() = 0;
 
+		/// <summary>
+		/// When implemented gets the size of the pipeline state object.
+		/// </summary>
+		/// <returns></returns>
 		virtual int getSettingObjectSize() = 0;
 
 		virtual D3D12_ROOT_SIGNATURE_FLAGS getRootFlags() {
 			return D3D12_ROOT_SIGNATURE_FLAG_NONE;
 		}
 
+		/// <summary>
+		/// This method binds a global root signature to the pipeline object at the end.
+		/// </summary>
 		virtual void CompleteStateObject(DX_RootSignature rootSignature) = 0;
 
 		virtual void OnCreate(wDevice* w_device) override;
@@ -14903,6 +15064,9 @@ namespace dx4xb {
 
 		virtual void OnDispatch(wCmdList* w_cmdList) override;
 
+		/// <summary>
+		/// Factory method to create in derived types the specific binder for the pipeline.
+		/// </summary>
 		virtual gObj<ComputeBinder> OnCollectBindings() = 0;
 
 		// When implemented by users, this method will setup the pipeline object after created
@@ -15015,6 +15179,9 @@ namespace dx4xb {
 		}
 
 	protected:
+		/// <summary>
+		/// Method that should be overriden to bind the resources to the pipeline.
+		/// </summary>
 		virtual void Bindings(gObj<ComputeBinder> binder) { }
 	};
 
@@ -15047,6 +15214,9 @@ namespace dx4xb {
 			return binder;
 		}
 
+		/// <summary>
+		/// Method that should be overriden to bind the resources to the pipeline.
+		/// </summary>
 		virtual void Bindings(gObj<GraphicsBinder> binder) { }
 	};
 
@@ -15326,6 +15496,7 @@ namespace dx4xb {
 			LoadProgram(program);
 		}
 
+		// Creates a handler to a specific shader
 		template<typename S>
 		void Shader(gObj<S>& handle, LPCWSTR shader) {
 			handle = new S(shader);
@@ -15335,7 +15506,7 @@ namespace dx4xb {
 		void HitGroup(gObj<HitGroupHandle> &hitGroup, gObj<ClosestHitHandle> closest, gObj<AnyHitHandle> anyHit, gObj<IntersectionHandle> intersection);
 
 		// When implemented, configures the pipeline object loading libraries,
-		// creating shader handles and defining program settings.
+		// creating shader handles and specifying programs.
 		virtual void Setup() = 0;
 
 		Engine GetEngine() { return Engine::Compute; }
@@ -15505,7 +15676,7 @@ namespace dx4xb {
 		// Draws a primitive using a specific number of vertices
 		void DrawPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
 
-		// Draws a primitive using a specific number of vertices
+		// Draws an indexed primitive using a specific number of vertices
 		void DrawIndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY topology, int count, int start = 0);
 
 		// Draws triangles using a specific number of vertices
@@ -15513,6 +15684,7 @@ namespace dx4xb {
 			DrawPrimitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
 		}
 
+		// Draws an indexed triangle primitive using a specific number of vertices
 		void DrawIndexedTriangles(int count, int start = 0) {
 			DrawIndexedPrimitive(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, count, start);
 		}
@@ -15523,6 +15695,9 @@ namespace dx4xb {
 	struct DX_GeometryCollectionWrapper;
 	struct DX_InstanceCollectionWrapper;
 
+	/// <summary>
+	/// Represents posible states of a collection depending on the elements that needs to be updated to the gpu.
+	/// </summary>
 	enum class CollectionState {
 		// The collection has not been built yet, there is not any GPU version of it.
 		NotBuilt,
@@ -15547,10 +15722,19 @@ namespace dx4xb {
 			delete wrapper;
 		}
 
+		/// <summary>
+		/// Gets the current state this collection's buffers on the GPU.
+		/// </summary>
 		CollectionState State();
 
+		/// <summary>
+		/// This method forces a state for the collection in order to force a specific gpu behaviour.
+		/// </summary>
 		void ForceState(CollectionState state);
 
+		/// <summary>
+		/// Gets the number of elements in this collection.
+		/// </summary>
 		int Count();
 
 		// Clears this collection
@@ -15564,22 +15748,44 @@ namespace dx4xb {
 		void __SetInputLayout(VertexElement* elements, int count);
 
 	public:
+		/// <summary>
+		/// Updates the vertices of a specific geometry in the collection
+		/// </summary>
 		void UpdateVertices(int geometryID, gObj<Buffer> newVertices);
 
+		/// <summary>
+		/// Updates the transform index of a specific geometry in the collection
+		/// </summary>
 		void UpdateTransform(int geometryID, int transformIndex);
 
+		/// <summary>
+		/// Creates a geometry and append to the collection. Returns the id of the new geometry.
+		/// </summary>
 		int CreateGeometry(gObj<Buffer> vertices, int transformIndex = -1);
 
+		/// <summary>
+		/// Creates a geometry and append to the collection. Returns the id of the new geometry.
+		/// </summary>
 		int CreateGeometry(gObj<Buffer> vertices, gObj<Buffer> indices, int transformIndex = -1);
 
+		/// <summary>
+		/// Specifies the vertex layout for future geometries. This method is used only to know the offset and format in the vertex stride of the POSITION vertex element.
+		/// By default is assumed a 3-float position at the start of the struct.
+		/// </summary>
 		template<int count>
 		void UseVertexLayout(VertexElement(&layout)[count]) {
 			__SetInputLayout((VertexElement*)&layout, count);
 		}
+		/// <summary>
+		/// Specifies the vertex layout for future geometries. This method is used only to know the offset and format in the vertex stride of the POSITION vertex element.
+		/// By default is assumed a 3-float position at the start of the struct.
+		/// </summary>
 		void UseVertexLayout(std::initializer_list<VertexElement> layout) {
 			__SetInputLayout((VertexElement*)layout.begin(), layout.size());
 		}
-
+		/// <summary>
+		/// Specifies the transform buffer used for geometries.
+		/// </summary>
 		void UseTransforms(gObj<Buffer> transforms);
 	};
 
@@ -15587,8 +15793,15 @@ namespace dx4xb {
 		friend RaytracingManager;
 		ProceduralGeometryCollection() :GeometryCollection() {}
 	public:
-		void UpdateBoxes(int start, gObj<Buffer> newBoxes);
+		/// <summary>
+		/// Updates the boxes for a specific geometry.
+		/// </summary>
+		void UpdateBoxes(int geometryID, gObj<Buffer> newBoxes);
 
+		/// <summary>
+		/// Creates a procedural geometry bounded by several boxes.
+		/// Returns the id of the new geometry.
+		/// </summary>
 		int CreateGeometry(gObj<Buffer> boxes);
 	};
 
@@ -15618,10 +15831,19 @@ namespace dx4xb {
 			UINT instanceID = INTSAFE_UINT_MAX,
 			float4x3 transform = float4x3(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0));
 
+		/// <summary>
+		/// Gets the number of elements in this collection.
+		/// </summary>
 		int Count();
 
+		/// <summary>
+		/// Gets the current state this collection's buffers on the GPU.
+		/// </summary>
 		CollectionState State();
 
+		/// <summary>
+		/// This method forces a state for the collection in order to force a specific gpu behaviour.
+		/// </summary>
 		void ForceState(CollectionState state);
 
 		// Clear this collection
@@ -15637,10 +15859,22 @@ namespace dx4xb {
 	public:
 		using GraphicsManager::ToGPU;
 
+		/// <summary>
+		/// Creates a triangle geometry collection. Use this object to build your bottom level ADS.
+		/// </summary>
 		gObj<TriangleGeometryCollection> CreateTriangleGeometries();
+		/// <summary>
+		/// Creates a procedural geometry collection. Use this object to build your bottom level ADS.
+		/// </summary>
 		gObj<ProceduralGeometryCollection> CreateProceduralGeometries();
+		/// <summary>
+		/// Creates a instance collection. Use this object to build your top level ADS.
+		/// </summary>
 		gObj<InstanceCollection> CreateIntances();
-
+		/// <summary>
+		/// Use this method to re-attach a geometry collection to the current command list.
+		/// Necessary in case of updates to the buffers.
+		/// </summary>
 		gObj<GeometryCollection> Attach(gObj<GeometryCollection> collection);
 
 		// Depending on collection state, builds, updates or rebuilds current collection into GPU buffers.
@@ -15680,6 +15914,9 @@ namespace dx4xb {
 		void SetHitGroup(gObj<HitGroupHandle> group, int geometryIndex,
 			int rayContribution = 0, int multiplier = 1, int instanceContribution = 0);
 
+		/// <summary>
+		/// Dispatches on GPU a collection of rays with ids from 0,0,0 to width, height, depth.
+		/// </summary>
 		void DispatchRays(int width, int height, int depth = 1);
 	};
 
@@ -15688,16 +15925,33 @@ namespace dx4xb {
 #pragma region Device Manager
 
 	typedef struct PresenterDescription {
-		HWND hWnd = 0; // Window handle the device is associated with.
-		bool UseWarpDevice = false; // Uses a warp device to simulate all DX12 functionalities
-		int Frames = 2; // Number of frames on-the-fly. This value is used to allocate resources, defines the number of Backbuffers in swap chain
-		bool UseBuffering = false; // Defines if the scheduler should continue with next frame without awaiting present of previous frame.
-		int ResolutionWidth = 0;  // Width of the Backbuffers
-		int ResolutionHeight = 0; // Height of the Backbuffers
-		int Threads = 8; // Number of parallel population process in the scheduler...
-		/// ... TO BE CONTINUED
+		// Window handle the device is associated with.
+		HWND hWnd = 0; 
+		
+		// Uses a warp device to simulate all DX12 functionalities
+		bool UseWarpDevice = false; 
+		
+		// Number of frames on-the-fly. This value is used to allocate resources, defines the number of Backbuffers in swap chain
+		int Frames = 2; 
+		
+		// Defines if the scheduler should continue with next frame without awaiting present of previous frame.
+		bool UseBuffering = false; 
+		
+		// Width of the Backbuffers
+		int ResolutionWidth = 0;  
+
+		// Height of the Backbuffers
+		int ResolutionHeight = 0; 
+
+		// Number of parallel population process in the scheduler...
+		int Threads = 8; 
+		/// ... TO BE CONTINUED (We must add fullscreen support, backbuffer format, etc.)
 	} PresenterDescription;
 
+	/// <summary>
+	/// Represents the main objects created in the presenter.
+	/// This object is intended only for interoperativity. You dont need to use it directly to create graphics.
+	/// </summary>
 	struct InternalDXInfo {
 		HWND hWnd;
 		DX_Device device = nullptr;
@@ -15978,50 +16232,83 @@ namespace dx4xb {
 
 #pragma region Dispatching
 
+		/// <summary>
+		/// Performs a technique execution
+		/// </summary>
 		template<typename T>
 		inline void ExecuteTechnique(gObj<T> technique) {
 			technique->OnDispatch();
 		}
 
+		/// <summary>
+		/// Performs the collection of commands and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		void ExecuteProcess(gObj<GPUProcess> process);
 
+		/// <summary>
+		/// Performs the collection of commands asynchronously and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		void ExecuteProcessAsync(gObj<GPUProcess> process);
 
+		/// <summary>
+		/// Performs the collection of commands and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
 			ExecuteProcess(new MethodAsGPUProcess<T, CopyManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
 			ExecuteProcess(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
 			ExecuteProcess(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethod(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
 			ExecuteProcess(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands asynchronously and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, CopyManager>::Member member) {
 			ExecuteProcessAsync(new MethodAsGPUProcess<T, CopyManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands asynchronously and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, ComputeManager>::Member member) {
 			ExecuteProcessAsync(new MethodAsGPUProcess<T, ComputeManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands asynchronously and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, GraphicsManager>::Member member) {
 			ExecuteProcessAsync(new MethodAsGPUProcess<T, GraphicsManager>(instance, member));
 		}
 
+		/// <summary>
+		/// Performs the collection of commands asynchronously and enqueue for GPU execution in the proper engine.
+		/// </summary>
 		template<typename T>
 		void ExecuteMethodAsync(T* instance, typename MethodAsGPUProcess<T, RaytracingManager>::Member member) {
 			ExecuteProcessAsync(new MethodAsGPUProcess<T, RaytracingManager>(instance, member));
@@ -16031,33 +16318,70 @@ namespace dx4xb {
 	
 #pragma region Sync
 
+		/// <summary>
+		/// This method waits for all pending collecting processes to finish on the CPU. Then send a signal through the specified engines to synchronize later on the CPU the GPU termination.
+		/// returns a Signal object that can be used to wait on the CPU for GPU termination.
+		/// </summary>
 		Signal Flush(EngineMask mask = EngineMask::All);
 
 #pragma endregion
 
 	};
 
+	/// <summary>
+	/// Represents a base class for all technique implementation. The technique is the object intended to be speciallized defining a OnLoad behaviour and OnDispatch behaviour.
+	/// </summary>
 	class Technique : protected DeviceManager {
 		friend DeviceManager;
 
+		// Method used to bind a device to the technique. Will be called by Load method of a DeviceManager (Techniques or Presenter).
 		void OnCreate(wDevice* w_device);
 
 	protected:
+		/// <summary>
+		/// This method should be overriden to create technique resource, sub-techniques, allocate data, preprocessing, etc.
+		/// The intention is to call this method only once.
+		/// </summary>
 		virtual void OnLoad() {};
 
+		/// <summary>
+		/// This method should be overriden to perform all per-frame rendering.
+		/// The intention is to call this method for every frame.
+		/// </summary>
 		virtual void OnDispatch() {};
 	};
 
+	/// <summary>
+	/// Represents a factory class to define the overall graphics app loop.
+	/// The more likely usage is to have a singleton presenter associated to the window to create all techniques and perform the graphics loop.
+	/// BeginFrame
+	/// Execute techniques
+	/// EndFrame
+	/// </summary>
 	class Presenter : public DeviceManager
 	{
 		Presenter() {}
 	public:
+		/// <summary>
+		/// Creates a presenter using the description passed by the parameter.
+		/// </summary>
 		static gObj<Presenter> Create(const PresenterDescription& desc);
 
+		/// <summary>
+		/// Method used to retrieve the internal DX objects used by this presenter and techniques.
+		/// Notice, this method is intended for interoperativity only and should not be used to generate graphics.
+		/// Any action on the GPU must be posible using Techniques objects.
+		/// </summary>
 		void GetInternalDXInfo(InternalDXInfo& info);
 
+		/// <summary>
+		/// Call this method at the begining of the frame. This method will prepare all DX12 objects to a new frame.
+		/// </summary>
 		void BeginFrame();
 
+		/// <summary>
+		/// Call this method at the end of the frame. This method ensures everything is ready to present.
+		/// </summary>
 		void EndFrame();
 
 		~Presenter();
@@ -16067,6 +16391,5 @@ namespace dx4xb {
 #pragma endregion
 
 }
-
 
 #endif

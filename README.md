@@ -96,8 +96,8 @@ dx4xb manages internally a fixed number (defined normally 8) of workers. The mai
 The proposed mechanism for synchronization in dx4xb is the Signal concept. Every time the user use Execute_OnGPU_Async to enqueue some graphics process asynchronously, this process is enqueued. Using `Flush` method will produce all pending work to be completed (finish populating all async pending works in queue) and executed by their respective command queue (engines).​		
 
 ```c++
-perform_async(LoadAssets);
-perform_async(ComputeSomePreprocessedData);
+Execute_OnGPU_Async(LoadAssets);
+Execute_OnGPU_Async(ComputeSomePreprocessedData);
 Flush(EngineMask::All);
 ```
 
@@ -185,7 +185,7 @@ void OnLoad() {
 		VERTEX(...)
 	});
 	// Performs a copying commanding execution for uploading data to resources
-	perform(UploadData);
+	Execute_OnGPU(UploadData);
 }
 
 // A copy engine can be used to populate buffers using GPU commands.

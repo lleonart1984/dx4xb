@@ -493,7 +493,8 @@ namespace dx4xb {
 
 	void dx4xb::Signal::WaitFor()
 	{
-		((wScheduler*)this->scheduler)->WaitFor(*this);
+		if (this->scheduler)
+			((wScheduler*)this->scheduler)->WaitFor(*this);
 	}
 
 #pragma endregion
