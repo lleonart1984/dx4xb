@@ -51,6 +51,6 @@ float3 SampleLight(float3 L)
 #else
 	int N = 10;
 #endif
-	float phongNorm = (N + 2) / (4 * 3.14159);
+	float phongNorm = (N + 2) / (2 * 3.14159);
 	return pow(max(0, dot(L, LightDirection)), N) * phongNorm * LightIntensity;
 }

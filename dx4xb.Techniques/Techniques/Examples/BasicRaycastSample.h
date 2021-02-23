@@ -89,8 +89,6 @@ public:
 		if (+(elements & SceneElement::Vertices))
 		{
 			VertexBuffer->Write(desc->Vertices().Data);
-			RaytracingManager* m;
-			((GraphicsManager*)m)->ToGPU(gObj<Buffer>());
 			manager->ToGPU(VertexBuffer);
 		}
 

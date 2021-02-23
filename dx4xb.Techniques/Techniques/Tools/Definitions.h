@@ -48,10 +48,10 @@ struct Vertex
 Vertex Transform(Vertex surfel, float4x3 transform) {
 	Vertex v = {
 		mul(float4(surfel.P, 1), transform),
-		mul(float4(surfel.N, 0), transform),
+		(mul(float4(surfel.N, 0), transform)),
 		surfel.C,
-		mul(float4(surfel.T, 0), transform),
-		mul(float4(surfel.B, 0), transform) };
+		(mul(float4(surfel.T, 0), transform)),
+		(mul(float4(surfel.B, 0), transform)) };
 	return v;
 }
 

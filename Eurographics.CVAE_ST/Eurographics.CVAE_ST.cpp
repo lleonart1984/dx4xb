@@ -15,13 +15,13 @@ dx4xb::string desktop_directory()
 	return dx4xb::string(path);
 }
 
-#include "Teasser.h"
+//#include "Teasser.h"
 //#include "Comparisons.h"
 //#include "ComparisonsLucy.h"
 //#include "ComplexityBunny.h"
 //#include "ComplexityLucy.h"
 //#include "Absorptions.h"
-//#include "NEETests.h"
+#include "NEETests.h"
 
 
 #define USE_GUI
@@ -143,6 +143,8 @@ int main(int, char**)
 		guiDescriptors->GetCPUDescriptorHandleForHeapStart(),
 		guiDescriptors->GetGPUDescriptorHandleForHeapStart());
 
+	float runningTime = 0;
+
 #endif
 
 	// Create the technique and load
@@ -201,8 +203,10 @@ int main(int, char**)
 			int frames;
 			asStatistics->getAccumulators(sumTexture, sqrSumTexture, frames);
 
-			if (frames > 1)
-				if ((frames & (frames - 1)) == 0) // power of 2
+			if (ImGui::GetTime() > 120)
+
+			//if (frames > 8000)
+			//	if ((frames & (frames - 1)) == 0) // power of 2
 				{
 					char number[100];
 					_itoa_s(frames, number, 10);
@@ -219,6 +223,8 @@ int main(int, char**)
 					savingStats->FileName = fileName + dx4xb::string("_sqrSum.bin");
 					savingStats->TextureToSave = sqrSumTexture;
 					presenter->ExecuteTechnique(savingStats); // saving sqr sum
+
+					break;
 				}
 		}
 #endif

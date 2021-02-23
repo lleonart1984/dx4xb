@@ -1,4 +1,3 @@
-#include "pch.h"
 #include "dx4xb_scene.h"
 
 namespace dx4xb {
@@ -709,7 +708,12 @@ namespace dx4xb {
 
 #pragma region Prepare vertex buffer and index buffer
 
-			SceneVertex* vertices = new SceneVertex[positions.size()];
+			int totalVertices;
+
+#ifdef POSITIONS_ARE_VERTICES
+
+			totalVertices = positions.size();
+			SceneVertex* vertices = new SceneVertex[totalVertices];
 
 			// Copy positions
 			for (int i = 0; i < positions.size(); i++)
@@ -725,6 +729,31 @@ namespace dx4xb {
 
 			int vertexOffset = scene->appendVertices(vertices, positions.size()); // bind vertices (vertexOffset should be 0).
 			int indexOffset = scene->appendIndices(&positionIndices.first(), positionIndices.size()); // bind indices (indexOffset should be 0)
+
+#else
+			totalVertices = positionIndices.size();
+
+			SceneVertex* vertices = new SceneVertex[totalVertices];
+			int* indices = new int[positionIndices.size()];
+
+			// Copy positions
+			for (int i = 0; i < positionIndices.size(); i++)
+			{
+				vertices[i].Position = positions[positionIndices[i]];
+				indices[i] = i;
+			}
+
+			// Copy normals
+			for (int i = 0; i < normalIndices.size(); i++)
+				vertices[i].Normal = normals[normalIndices[i]];
+
+			// Copy texture coordinates
+			for (int i = 0; i < normalIndices.size(); i++)
+				vertices[i].TexCoord = texcoords[textureIndices[i]];
+
+			int vertexOffset = scene->appendVertices(vertices, totalVertices); // bind vertices (vertexOffset should be 0).
+			int indexOffset = scene->appendIndices(indices, positionIndices.size()); // bind indices (indexOffset should be 0)
+#endif
 
 #pragma endregion
 
@@ -742,6 +771,10 @@ namespace dx4xb {
 				if (currentMaterial < materialLimits.size() && (currentGroup >= groupLimits.size() || materialLimits[currentMaterial] <= groupLimits[currentGroup]))
 				{
 					nextGroupStart = materialLimits[currentMaterial];
+					if (nextGroupStart != currentGroupStart) {
+						geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+						currentGroupStart = nextGroupStart;
+					}
 					currentMaterialIndex = getMaterialIndex(usedMaterials[currentMaterial]);
 					currentMaterial++;
 				}
@@ -749,18 +782,17 @@ namespace dx4xb {
 					if (currentGroup < groupLimits.size())
 					{
 						nextGroupStart = groupLimits[currentGroup];
+						if (nextGroupStart != currentGroupStart) {
+							geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+							currentGroupStart = nextGroupStart;
+						}
 						currentGroup++;
 					}
 					else break; // finish merging
-				if (nextGroupStart != currentGroupStart) {
-
-					geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, positions.size(), currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
-					currentGroupStart = nextGroupStart;
-				}
 			}
 			nextGroupStart = positionIndices.size();
 			if (nextGroupStart != currentGroupStart) { // last range of indices...
-				geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, positions.size(), currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+				geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
 			}
 
 #pragma endregion

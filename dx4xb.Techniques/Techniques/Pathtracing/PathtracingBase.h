@@ -172,7 +172,7 @@ public:
 		pipeline->AccumulativeInfo.PathtracingRatio = 0.5;
 #else
 		pipeline->AccumulativeInfo.ShowComplexity = 0;
-		pipeline->AccumulativeInfo.PathtracingRatio = 0.0;
+		pipeline->AccumulativeInfo.PathtracingRatio = 0.5;
 #endif
 
 		Execute_OnGPU(LoadAssets);
@@ -187,7 +187,7 @@ public:
 
 	virtual void OnDispatch() override {
 		// Update dirty elements
-		//Execute_OnGPU(UpdateAssets);
+		Execute_OnGPU(UpdateAssets);
 		// Draw current Frame
 		Execute_OnGPU(DrawScene);
 	}
@@ -357,9 +357,8 @@ public:
 					pipeline->PerGeometry.TransformIndex = geometryOffset + j;
 
 					manager->SetHitGroup(pipeline->Hitting, j, 0, 1, geometryOffset);
-
-					geometryOffset += instance.Count;
 				}
+				geometryOffset += instance.Count;
 			}
 
 			firstTime = false;

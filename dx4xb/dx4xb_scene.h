@@ -227,7 +227,7 @@ namespace dx4xb {
 		{
 			return SceneData<string>{
 				&textures.first(),
-					textures.size()
+				textures.size()
 			};
 		}
 		SceneData<GeometryDescription> Geometries() const
@@ -427,9 +427,9 @@ namespace dx4xb {
 		// Gets or sets the camera field of view in radians (vertical angle).
 		float FoV = PI / 4;
 		// Gets or sets the distance to the nearest visible plane for this camera.
-		float NearPlane = 0.1f;
+		float NearPlane = 0.001f;
 		// Gets or sets the distance to the farthest visible plane for this camera.
-		float FarPlane = 1000.0f;
+		float FarPlane = 100.0f;
 
 		// Rotates this camera around Position
 		void Rotate(float hor, float vert) {

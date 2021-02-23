@@ -175,11 +175,11 @@ public:
 	void DrawScene(gObj<GraphicsManager> manager) {
 		pipeline->RenderTarget = CurrentRenderTarget();
 		manager->SetPipeline(pipeline);
-		manager->IndexBuffer(IndexBuffer);
 		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
 		manager->ClearRenderTarget(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
 		manager->ClearDepth(pipeline->DepthBuffer);
+		manager->IndexBuffer(IndexBuffer);
 
 		auto desc = scene->getScene();
 

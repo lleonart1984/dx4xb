@@ -28,7 +28,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 		RayPayload payload = (RayPayload)0;
 		if (!Intersect(x, w, payload)) // 
-			return importance * (SampleSkybox(w) + SampleLight(w) * (bounces > 0));
+			return importance * (SampleSkybox(w) + SampleLight(w));// *(bounces > 0));
 
 		Vertex surfel = (Vertex)0;
 		Material material = (Material)0;
@@ -41,6 +41,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 			payload.TransformIndex,
 			surfel, material, volMaterial, 0, 0);
 
+		
 		float d = length(surfel.P - x); // Distance to the hit position.
 		float t = isOutside || volMaterial.Extinction[cmp] == 0 ? 100000000 : -log(max(0.000000000001, 1 - random())) / volMaterial.Extinction[cmp];
 
@@ -50,6 +51,9 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 			bounces += isOutside;
 			if (bounces >= MAX_PATHTRACING_BOUNCES)
 				return 0;
+
+			//return dot(surfel.N, LightDirection);
+
 			SurfelScattering(x, w, importance, surfel, material);
 
 			if (any(material.Specular) && material.Roulette.w > 0)

@@ -43,6 +43,14 @@ float3 SpecularBRDF(float3 V, float3 L, float3 fN, float NdotL, Material materia
 	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / two_pi;
 }
 
+
+float3 DirectContribution(float3 V, float3 L, float3 fN, float NdotL, Material material) {
+	return (
+			DiffuseBRDF(V, L, fN, NdotL, material) * material.Roulette.x +
+			SpecularBRDF(V, L, fN, NdotL, material) * material.Roulette.y
+			) * NdotL;
+}
+
 // Scatters a ray randomly using the material roulette information
 // to decide between different illumination models (lambert, blinn, mirror, fresnel).
 // the inverse of pdf value is already multiplied in ratio
@@ -102,7 +110,7 @@ void RandomScatterRay(float3 V, Vertex surfel, Material material,
 	bool invertNormal = NdotV < 0;
 	NdotV = abs(NdotV); // absolute value of the cosine
 	// Ratio between refraction indices depending of exiting or entering to the medium (assuming vaccum medium 1)
-	float eta = invertNormal ? material.RefractionIndex : 1 / material.RefractionIndex;
+	float eta = !invertNormal ? material.RefractionIndex : 1 / material.RefractionIndex;
 	// Compute faced normal
 	float3 fN = invertNormal ? -surfel.N : surfel.N;
 	// Gets the reflection component of fresnel

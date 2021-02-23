@@ -4,7 +4,7 @@
 //You must activate SHOW_COMPLEXITY in Parameters.h
 
 // Vary from 1 to 16 to get different settings
-#define ABSORPTION_MULTIPLIER 1
+#define ABSORPTION_MULTIPLIER 16
 
 // Uncomment this to force a PT solution
 //#define USE_PT

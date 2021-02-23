@@ -1,7 +1,6 @@
 // dx4xb.cpp : Defines the functions for the static library.
 //
 
-#include "pch.h"
 #include "framework.h"
 #include "dx4xb.h"
 #include "dx4xb_private.h"

@@ -470,6 +470,115 @@ public:
 
 #else
 
+class ClassicCornellScene: public SceneManager{
+public:
+	ClassicCornellScene() :SceneManager() {
+	}
+	~ClassicCornellScene() {}
+
+	float4x4* InitialTransforms;
+
+	void SetupScene() {
+
+		camera.Position = float3(0, 0, 1.6);
+		lights[0].Direction = normalize(float3(1, 1, -1));
+		lights[0].Intensity = float3(5, 5, 5) * 2;
+
+		dx4xb::string desktopPath = desktop_directory();
+
+		dx4xb::string lucyPath = desktopPath + dx4xb::string("\\Models\\CornellBox\\BoxBox.obj");
+
+		auto bunnyScene = OBJLoader::Load(lucyPath);
+		bunnyScene->Normalize(
+			SceneNormalization::Scale |
+			SceneNormalization::Maximum |
+			//SceneNormalization::MinX |
+			//SceneNormalization::MinY |
+			//SceneNormalization::MinZ |
+			SceneNormalization::Center
+		);
+		scene->appendScene(bunnyScene);
+
+		setGlassMaterial(0, 1, 1 / 1.5); // glass bunny
+		//setMirrorMaterial(2, 0.3); // reflective plate
+
+		scene->VolumeMaterials().Data[0] = VolumeMaterial{
+			float3(500, 500, 500) * 0.25, // sigma
+			float3(0.99, 0.995, 0.999),
+			float3(0.9, 0.9, 0.9)
+		};
+
+		InitialTransforms = new float4x4[scene->Instances().Count];
+		for (int i = 0; i < scene->Instances().Count; i++)
+			InitialTransforms[i] = scene->Instances().Data[i].Transform;
+
+		SceneManager::SetupScene();
+	}
+
+	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
+		return;//
+
+		scene->Instances().Data[0].Transform =
+			mul(InitialTransforms[0], Transforms::RotateY(time));
+		OnUpdated(SceneElement::InstanceTransforms);
+	}
+};
+
+class BunnyCornellScene : public SceneManager {
+public:
+	BunnyCornellScene() :SceneManager() {
+	}
+	~BunnyCornellScene() {}
+
+	float4x4* InitialTransforms;
+
+	void SetupScene() {
+
+		camera.Position = float3(0, 0, 1.6);
+		lights[0].Direction = normalize(float3(0.2, 0.2, 1));
+		lights[0].Intensity = float3(5, 5, 5);
+
+		dx4xb::string desktopPath = desktop_directory();
+
+		dx4xb::string lucyPath = desktopPath + dx4xb::string("\\Models\\BunnyInCornell\\bunnyScene.obj");
+
+		auto bunnyScene = OBJLoader::Load(lucyPath);
+		bunnyScene->Normalize(
+			SceneNormalization::Scale |
+			SceneNormalization::Maximum |
+			//SceneNormalization::MinX |
+			//SceneNormalization::MinY |
+			//SceneNormalization::MinZ |
+			SceneNormalization::Center
+		);
+		scene->appendScene(bunnyScene);
+
+		setGlassMaterial(5, 1, 1 / 1.5); // glass bunny
+		//setMirrorMaterial(2, 0.3); // reflective plate
+
+		//scene->VolumeMaterials().Data[0] = VolumeMaterial{
+		//	float3(500, 500, 500) * 0.25, // sigma
+		//	float3(0.99, 0.995, 0.999),
+		//	float3(0.9, 0.9, 0.9)
+		//};
+
+		InitialTransforms = new float4x4[scene->Instances().Count];
+		for (int i = 0; i < scene->Instances().Count; i++)
+			InitialTransforms[i] = scene->Instances().Data[i].Transform;
+
+		SceneManager::SetupScene();
+	}
+
+	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
+		return;//
+
+		scene->Instances().Data[0].Transform =
+			mul(InitialTransforms[0], Transforms::RotateY(time));
+		OnUpdated(SceneElement::InstanceTransforms);
+	}
+};
+
+
 class BunnyScene : public SceneManager {
 public:
 	BunnyScene() :SceneManager() {
@@ -972,6 +1081,55 @@ public:
 		OnUpdated(SceneElement::InstanceTransforms);
 	}
 };
+
+
+class Sponza : public SceneManager {
+public:
+	Sponza() :SceneManager() {
+	}
+	~Sponza() {}
+
+	float4x4* InitialTransforms;
+
+	void SetupScene() {
+
+		camera.Position = float3(0.3f, 0.05f, -0.028);
+		camera.Target = float3(0, 0.07f, 0);
+
+		lights[0].Direction = normalize(float3(0, 1, 0));
+		lights[0].Intensity = float3(6, 6, 6)*10;
+
+		dx4xb::string desktopPath = desktop_directory();
+
+		dx4xb::string modelPath = desktopPath + dx4xb::string("\\Models\\sponza\\SponzaMoreMeshes.obj");
+
+		auto modelScene = OBJLoader::Load(modelPath);
+		modelScene->Normalize(
+			SceneNormalization::Scale |
+			SceneNormalization::Maximum //|
+			//SceneNormalization::MinX |
+			//SceneNormalization::MinY |
+			//SceneNormalization::MinZ |
+			//SceneNormalization::Center
+		);
+		scene->appendScene(modelScene);
+
+		InitialTransforms = new float4x4[scene->Instances().Count];
+		for (int i = 0; i < scene->Instances().Count; i++)
+			InitialTransforms[i] = scene->Instances().Data[i].Transform;
+
+		SceneManager::SetupScene();
+	}
+
+	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
+		return;//
+
+		scene->Instances().Data[0].Transform =
+			mul(InitialTransforms[0], Transforms::RotateY(time));
+		OnUpdated(SceneElement::InstanceTransforms);
+	}
+};
+
 
 
 #endif

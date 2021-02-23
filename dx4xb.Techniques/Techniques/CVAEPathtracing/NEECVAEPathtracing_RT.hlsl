@@ -41,8 +41,7 @@ bool GenerateFullVariablesWithModel(float G, float Phi, float3 win, float densit
 	float n = round(exp(logN)+0.49);
 	logN = log(n);
 
-	if (random() >= pow(Phi, n))
-		return false;
+	bool notAbsorbed = random() < pow(Phi, n);
 
 	float4 pathLatent14 = randomStdNormal4();
 	float pathLatent5 = randomStdNormal();
@@ -112,7 +111,7 @@ bool GenerateFullVariablesWithModel(float G, float Phi, float3 win, float densit
 		factor = accum / pow(Phi, n);
 	}
 
-	return true;
+	return notAbsorbed;
 }
 
 float3 ComputePath(float3 O, float3 D, inout int complexity)
@@ -138,7 +137,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 		RayPayload payload = (RayPayload)0;
 		if (!Intersect(x, w, payload)) // 
-			return directContribution + importance * (SampleSkybox(w) + SampleLight(w) * (complexity <= 2));
+			return directContribution + importance * SampleSkybox(w);
 
 		Vertex surfel = (Vertex)0;
 		Material material = (Material)0;
@@ -160,7 +159,11 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 			bounces += isOutside;
 
 			if (bounces >= MAX_PATHTRACING_BOUNCES)
-				return 0;
+				return directContribution;
+
+			payload = (RayPayload)0;
+			bool clearPathToLight = !Intersect(surfel.P + surfel.N * 0.0001, LightDirection, payload); // Shadow ray
+			directContribution += clearPathToLight * importance * LightIntensity * DirectContribution(-w, LightDirection, surfel.N, dot(surfel.N, LightDirection), material);
 
 			SurfelScattering(x, w, importance, surfel, material);
 
@@ -194,9 +197,9 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 				float d = length(surfel.P - x); // Get medium traversing distance
 
 				payload = (RayPayload)0;
-				bool clearPathToLight = !Intersect(surfel.P + LightDirection * 0.01, LightDirection, payload); // Shadow ray
+				bool clearPathToLight = !Intersect(surfel.P + LightDirection * 0.001, LightDirection, payload); // Shadow ray
 
-				directContribution += clearPathToLight * importance * LightIntensity * exp(-d * volMaterial.Extinction[cmp]) * EvalPhase(volMaterial.G[cmp], w, LightDirection) / 2;
+				directContribution += clearPathToLight * importance * LightIntensity * exp(-d * volMaterial.Extinction[cmp]) * EvalPhase(volMaterial.G[cmp], w, LightDirection);
 
 				w = ImportanceSamplePhase(volMaterial.G[cmp], w); // scattering event...
 			}
@@ -207,12 +210,11 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 				float3 _x, _w, _X, _W;
 				float factor;
-				if (!GenerateFullVariablesWithModel(volMaterial.G[cmp], volMaterial.ScatteringAlbedo[cmp], w, er, _x, _w, _X, _W, factor))
-					return directContribution; // case of absorption
+				
+				bool absorption = !GenerateFullVariablesWithModel(volMaterial.G[cmp], volMaterial.ScatteringAlbedo[cmp], w, er, _x, _w, _X, _W, factor);
 
 				// Gets the sample scattering position for direct lighting
 				float3 xs = x + _X * r;
-
 				// Ray cast to light source
 				// NEE using straight line as a naive approximation missing refraction at interface
 				payload = (RayPayload)0;
@@ -229,10 +231,13 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 				float d = length(surfel.P - xs); // Get medium traversing distance
 
 				payload = (RayPayload)0;
-				bool clearPathToLight = !Intersect(surfel.P + LightDirection * 0.01, LightDirection, payload); // Shadow ray
+				bool clearPathToLight = !Intersect(surfel.P + LightDirection * 0.001, LightDirection, payload); // Shadow ray
 
-				directContribution += factor * clearPathToLight * importance * LightIntensity * exp(-d * volMaterial.Extinction[cmp]) * EvalPhase(volMaterial.G[cmp], _W, LightDirection) / 2;
+				directContribution += factor * clearPathToLight * importance * LightIntensity * exp(-d * volMaterial.Extinction[cmp]) * EvalPhase(volMaterial.G[cmp], _W, LightDirection);
 
+				if (absorption)
+					return directContribution;
+				
 				w = _w;
 				x += _x * r;
 			}

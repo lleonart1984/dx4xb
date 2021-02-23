@@ -43,8 +43,8 @@ VS_OUT main(VS_IN vIn)
 	P = mul(P, InstanceTransforms[InstanceIndex]);
 	N = mul(N, InstanceTransforms[InstanceIndex]);
 
-	Out.P = P;
-	Out.N = normalize(N);
+	Out.P = P.xyz;
+	Out.N = normalize(N.xyz);
 	Out.C = vIn.C;
 	Out.Proj = mul(mul(P, View), Projection);
 
