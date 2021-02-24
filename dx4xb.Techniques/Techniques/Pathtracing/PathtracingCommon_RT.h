@@ -45,7 +45,7 @@ bool Intersect(float3 P, float3 D, out RayPayload payload) {
 	ray.Direction = D;
 	ray.TMin = 0;
 	ray.TMax = 100.0;
-	TraceRay(Scene, RAY_FLAG_FORCE_OPAQUE, 0xFF, 0, 1, 0, ray, payload);
+	TraceRay(Scene, RAY_FLAG_NONE, 0xFF, 0, 1, 0, ray, payload);
 	return payload.TriangleIndex >= 0;
 }
 
@@ -81,6 +81,27 @@ void SurfelScattering(inout float3 x, inout float3 w, inout float3 importance, V
 }
 
 float3 ComputePath(float3 O, float3 D, inout int complexity);
+
+[shader("anyhit")]
+void CheckMaskOnHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
+{
+	payload.Barycentric = float3(1 - attr.barycentrics.x - attr.barycentrics.y, attr.barycentrics.x, attr.barycentrics.y);
+	GetIndices(payload.TransformIndex, payload.MaterialIndex, payload.TriangleIndex, payload.VertexOffset);
+
+	Vertex surfel = (Vertex)0;
+	Material material = (Material)0;
+	VolumeMaterial volMaterial = (VolumeMaterial)0;
+	GetHitInfo(
+		payload.Barycentric,
+		payload.MaterialIndex,
+		payload.TriangleIndex,
+		payload.VertexOffset,
+		payload.TransformIndex,
+		surfel, material, volMaterial, 0, 0);
+
+	if (material.RefractionIndex == 0) // transparent
+		IgnoreHit();
+}
 
 [shader("closesthit")]
 void OnClosestHit(inout RayPayload payload, in BuiltInTriangleIntersectionAttributes attr)
