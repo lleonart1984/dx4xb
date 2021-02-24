@@ -22,6 +22,7 @@ public:
 				Shader(Context()->Generating);
 				Shader(Context()->Missing);
 				Shader(Context()->Hitting);
+				Shader(Context()->HittingWithMask);
 			}
 
 			void Bindings(gObj<RaytracingBinder> binder) {
@@ -68,6 +69,9 @@ public:
 			Shader(Missing, L"OnMiss");
 			gObj<ClosestHitHandle> closestHit;
 			Shader(closestHit, L"OnClosestHit");
+			gObj<AnyHitHandle> checkMaskOnHit;
+			Shader(checkMaskOnHit, L"CheckMaskOnHit");
+			HitGroup(HittingWithMask, closestHit, checkMaskOnHit, nullptr);
 			HitGroup(Hitting, closestHit, nullptr, nullptr);
 			CreateProgram(MainProgram);
 			RTProgram(MainProgram);
@@ -75,6 +79,7 @@ public:
 
 		gObj<RayGenerationHandle> Generating;
 		gObj<HitGroupHandle> Hitting;
+		gObj<HitGroupHandle> HittingWithMask;
 		gObj<MissHandle> Missing;
 
 		// Space 1 (CommonRT.h, CommonPT.h)
@@ -356,7 +361,10 @@ public:
 					pipeline->PerGeometry.MaterialIndex = geometry.MaterialIndex;
 					pipeline->PerGeometry.TransformIndex = geometryOffset + j;
 
-					manager->SetHitGroup(pipeline->Hitting, j, 0, 1, geometryOffset);
+					if (geometry.MaterialIndex >= 0 && desc->Materials().Data[geometry.MaterialIndex].MaskMap >= 0)
+						manager->SetHitGroup(pipeline->HittingWithMask, j, 0, 1, geometryOffset);
+					else
+						manager->SetHitGroup(pipeline->Hitting, j, 0, 1, geometryOffset);
 				}
 				geometryOffset += instance.Count;
 			}

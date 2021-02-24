@@ -42,6 +42,7 @@ void AugmentHitInfoWithTextureMapping(inout Vertex surfel, inout Material materi
 
 	material.Diffuse *= DiffTex.xyz;// *(MaskTex.x); // set transparent if necessary.
 	material.Specular.xyz = max(material.Specular.xyz, SpecularTex);
+	material.RefractionIndex *= MaskTex.x;
 }
 
 void GetIndices(out int transformIndex, out int materialIndex, out int triangleIndex, out int vertexOffset) {
