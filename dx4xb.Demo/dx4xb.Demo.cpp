@@ -279,14 +279,15 @@ int main(int, char**)
 	//gObj<STFTechnique> technique = new STFTechnique();
 	//gObj<STFXTechnique> technique = new STFXTechnique();
 	
+
 	gObj<ScreenShotTechnique> takingScreenshot;
 	gObj<ImageSavingTechnique> savingStats;
 	
 	//gObj<SceneManager> scene = new BuddhaScene();
-	//gObj<SceneManager> scene = new LucyAndDrago2();
+	//gObj<SceneManager> scene = new LucyAndDrago3();
 	//gObj<SceneManager> scene = new BunnyScene();
-	gObj<SceneManager> scene = new BunnyCornellScene();
-	//gObj<SceneManager> scene = new Sponza();
+	//gObj<SceneManager> scene = new BunnyCornellScene();
+	gObj<SceneManager> scene = new Sponza();
 	scene->SetupScene();
 
 	if (technique.Dynamic_Cast<IManageScene>())

@@ -32,7 +32,7 @@ float3 SpecularBRDFMulTwoPi(float3 V, float3 L, float3 fN, float NdotL, Material
 {
 	float3 H = normalize(V + L);
 	float HdotN = max(0.0001, dot(H, fN));
-	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness);
+	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / pi;
 }
 
 // Gets blinn-model specular normalized brdf ratio
@@ -40,7 +40,7 @@ float3 SpecularBRDF(float3 V, float3 L, float3 fN, float NdotL, Material materia
 {
 	float3 H = normalize(V + L);
 	float HdotN = max(0.0001, dot(H, fN));
-	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / two_pi;
+	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / pi / two_pi;
 }
 
 

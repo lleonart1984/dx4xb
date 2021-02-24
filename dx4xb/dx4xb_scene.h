@@ -640,9 +640,33 @@ namespace dx4xb {
 			material.Roulette = lerp(material.Roulette, float4(0, 0, 1, 0), alpha);
 		}
 
+		void setDiffuseMaterial(int index, float3 diffuse, float alpha) {
+			SceneMaterial& material = scene->Materials().Data[index];
+
+			material.Diffuse = lerp(material.Diffuse, diffuse, alpha);
+			material.Roulette = lerp(material.Roulette, float4(1, 0, 0, 0), alpha);
+		}
+
+		void setGlossyMaterial(int index, float3 specular, float power, float alpha) {
+			SceneMaterial& material = scene->Materials().Data[index];
+
+			material.Specular = lerp(material.Specular, specular, alpha);
+			material.SpecularPower = lerp(material.SpecularPower, power, alpha);
+			material.Roulette = lerp(material.Roulette, float4(0, 1, 0, 0), alpha);
+		}
 
 	public:
 		virtual ~SceneManager() {}
+
+		/// <summary>
+		/// Uses position information to average per-vertex normals
+		/// </summary>
+		void ComputeNormals();
+
+		/// <summary>
+		/// Uses position and texture coordinates information to compute tangent vectors.
+		/// </summary>
+		void ComputeTangets();
 
 		virtual void SetupScene() {
 			if (this->scene->Vertices().Count > 0)

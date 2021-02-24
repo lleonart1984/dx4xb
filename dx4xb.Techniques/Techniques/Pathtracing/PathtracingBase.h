@@ -172,7 +172,7 @@ public:
 		pipeline->AccumulativeInfo.PathtracingRatio = 0.5;
 #else
 		pipeline->AccumulativeInfo.ShowComplexity = 0;
-		pipeline->AccumulativeInfo.PathtracingRatio = 0.5;
+		pipeline->AccumulativeInfo.PathtracingRatio = 0.0;
 #endif
 
 		Execute_OnGPU(LoadAssets);

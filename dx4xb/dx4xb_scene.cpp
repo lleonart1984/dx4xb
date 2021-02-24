@@ -829,5 +829,47 @@ namespace dx4xb {
 		return state.scene;
 	}
 
+	void SceneManager::ComputeNormals() {
+	}
+
+	void SceneManager::ComputeTangets() {
+		int vertexCount = this->scene->Vertices().Count;
+		SceneVertex* VerticesData = this->scene->Vertices().Data;
+
+		for (int i = 0; i < vertexCount; i += 3)
+		{
+			//Getting vertex from indices
+			SceneVertex& vertex1 = VerticesData[i];
+			SceneVertex& vertex2 = VerticesData[i + 1];
+			SceneVertex& vertex3 = VerticesData[i + 2];
+
+			//making 
+			float3 edge_1_2 = vertex2.Position - vertex1.Position;
+			float3 edge_1_3 = vertex3.Position - vertex1.Position;
+
+			float2 coordinate_2_1 = vertex2.TexCoord - vertex1.TexCoord;
+
+			if (length(coordinate_2_1) <= 0.0001)
+				coordinate_2_1 = float2(1, 0);
+
+			float2 coordinate_3_1 = vertex3.TexCoord - vertex1.TexCoord;
+			if (length(coordinate_3_1) <= 0.0001)
+				coordinate_3_1 = float2(0, 1);
+
+			float alpha = 1.0f;// / max(0.001f, coordinate_2_1.x * coordinate_3_1.y - coordinate_2_1.y * coordinate_3_1.x);
+
+			vertex1.Tangent = vertex2.Tangent = vertex3.Tangent = float3(
+				max(0.00001, (edge_1_2.x * coordinate_3_1.y) - (edge_1_3.x * coordinate_2_1.y)) * alpha,
+				max(0.00001, (edge_1_2.y * coordinate_3_1.y) - (edge_1_3.y * coordinate_2_1.y)) * alpha,
+				max(0.00001, (edge_1_2.z * coordinate_3_1.y) - (edge_1_3.z * coordinate_2_1.y)) * alpha
+			);
+
+			vertex1.Binormal = vertex2.Binormal = vertex3.Binormal = float3(
+				max(0.00001, (edge_1_2.x * coordinate_3_1.x) - (edge_1_3.x * coordinate_2_1.x)) * alpha,
+				max(0.00001, (edge_1_2.y * coordinate_3_1.x) - (edge_1_3.y * coordinate_2_1.x)) * alpha,
+				max(0.00001, (edge_1_2.z * coordinate_3_1.x) - (edge_1_3.z * coordinate_2_1.x)) * alpha
+			);
+		}
+	}
 
 }

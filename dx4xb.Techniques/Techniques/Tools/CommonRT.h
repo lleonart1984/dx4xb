@@ -38,8 +38,9 @@ void AugmentHitInfoWithTextureMapping(inout Vertex surfel, inout Material materi
 	float3x3 TangentToWorld = { surfel.T, surfel.B, surfel.N };
 	// Change normal according to bump map
 	surfel.N = normalize(mul(BumpTex * 2 - 1, TangentToWorld));
+	//surfel.N = normalize(surfel.T);// normalize(mul(float3(0.5, 0.5, 1) * 2 - 1, TangentToWorld));
 
-	material.Diffuse *= DiffTex.xyz * (MaskTex.x); // set transparent if necessary.
+	material.Diffuse *= DiffTex.xyz;// *(MaskTex.x); // set transparent if necessary.
 	material.Specular.xyz = max(material.Specular.xyz, SpecularTex);
 }
 
