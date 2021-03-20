@@ -17,15 +17,20 @@ public:
 
 			void Setup() {
 				Payload(28);
+				Attribute(12); // 3-floats for barycentrics in 3D
 				StackSize(1);
 
 				Shader(Context()->Generating);
 				Shader(Context()->Missing);
 				Shader(Context()->Hitting);
 				Shader(Context()->HittingWithMask);
+				Shader(Context()->HittingVolume);
 			}
 
 			void Bindings(gObj<RaytracingBinder> binder) {
+				binder->Space(2); // Random space
+				binder->UAV(0, Context()->RngStates);
+				
 				binder->Space(1);
 				binder->UAV(0, Context()->OutputImage);
 				binder->UAV(1, Context()->Accumulation);
@@ -36,8 +41,10 @@ public:
 				binder->SRV(2, Context()->Transforms);
 				binder->SRV(3, Context()->Materials);
 				binder->SRV(4, Context()->VolMaterials);
-				binder->SRV_Array(5, Context()->Textures, Context()->TextureCount);
+				binder->SRV_Array(5, Context()->Grids, Context()->GridCount, 10);
+				binder->SRV_Array(15, Context()->Textures, Context()->TextureCount);
 				binder->SMP_Static(0, Sampler::Linear());
+				binder->SMP_Static(1, Sampler::LinearWithoutMipMaps());
 				binder->CBV(1, Context()->AccumulativeInfo);
 
 				binder->Space(0);
@@ -71,8 +78,13 @@ public:
 			Shader(closestHit, L"OnClosestHit");
 			gObj<AnyHitHandle> checkMaskOnHit;
 			Shader(checkMaskOnHit, L"CheckMaskOnHit");
+			gObj<IntersectionHandle> volumeIntersection;
+			Shader(volumeIntersection, L"DeltaTracking");
+			//gObj<AnyHitHandle> volumeAnyHit;
+			//Shader(volumeAnyHit, L"DeltaTrackingAnyHit");
 			HitGroup(HittingWithMask, closestHit, checkMaskOnHit, nullptr);
 			HitGroup(Hitting, closestHit, nullptr, nullptr);
+			HitGroup(HittingVolume, closestHit, nullptr, volumeIntersection);
 			CreateProgram(MainProgram);
 			RTProgram(MainProgram);
 		}
@@ -80,6 +92,7 @@ public:
 		gObj<RayGenerationHandle> Generating;
 		gObj<HitGroupHandle> Hitting;
 		gObj<HitGroupHandle> HittingWithMask;
+		gObj<HitGroupHandle> HittingVolume;
 		gObj<MissHandle> Missing;
 
 		// Space 1 (CommonRT.h, CommonPT.h)
@@ -88,12 +101,18 @@ public:
 		gObj<Buffer> Transforms;
 		gObj<Buffer> Materials;
 		gObj<Buffer> VolMaterials;
+		gObj<Texture3D>* Grids;
+		int GridCount;
 		gObj<Texture2D>* Textures;
 		int TextureCount;
 		gObj<Texture2D> OutputImage;
 		gObj<Texture2D> Accumulation;
 		gObj<Texture2D> SqrAccumulation;
 		gObj<Texture2D> Complexity;
+
+		// uint4 texture needed for random states per ray.
+		gObj<Texture2D> RngStates;
+
 		struct PerGeometryInfo {
 			int StartTriangle;
 			int VertexOffset;
@@ -125,6 +144,7 @@ public:
 
 	// Used to build bottom level ADS
 	gObj<Buffer> GeometryTransforms;
+	gObj<Buffer> VolumeGeometries;
 
 	void getAccumulators(gObj<Texture2D>& sum, gObj<Texture2D>& sqrSum, int& frames)
 	{
@@ -151,6 +171,7 @@ public:
 		int globalGeometryCount = 0;
 		for (int i = 0; i < desc->Instances().Count; i++)
 			globalGeometryCount += desc->Instances().Data[i].Count;
+		globalGeometryCount += desc->Volumes().Count; // one global transform per volume
 
 		// Allocate Memory for scene elements
 		pipeline->VertexBuffer = CreateBufferSRV<SceneVertex>(desc->Vertices().Count);
@@ -162,11 +183,28 @@ public:
 		pipeline->Textures = new gObj<Texture2D>[desc->getTextures().Count];
 		for (int i = 0; i < pipeline->TextureCount; i++)
 			pipeline->Textures[i] = LoadTexture2D(desc->getTextures().Data[i]);
-
+		pipeline->GridCount = desc->getGrids().Count;
+		pipeline->Grids = new gObj<Texture3D>[desc->getGrids().Count];
+		VolumeGeometries = CreateBufferADS<D3D12_RAYTRACING_AABB>(pipeline->GridCount);
+		for (int i = 0; i < pipeline->GridCount; i++)
+		{
+			pipeline->Grids[i] = LoadTexture3D(desc->getGrids().Data[i]);
+			int width = pipeline->Grids[i]->Width();
+			int height = pipeline->Grids[i]->Height();
+			int depth = pipeline->Grids[i]->Depth();
+			int maxDim = max(width, max(height, depth));
+			float3 corner = float3(width, height, depth)*0.5/maxDim;
+			VolumeGeometries->WriteElement(i, D3D12_RAYTRACING_AABB{
+					-corner.x, -corner.y, -corner.z,
+					corner.x, corner.y, corner.z
+				});
+		}
 		pipeline->OutputImage = CreateTexture2DUAV<RGBA>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 		pipeline->Accumulation = CreateTexture2DUAV<float4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 		pipeline->SqrAccumulation = CreateTexture2DUAV<float4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), 1, 1);
 		pipeline->Complexity = CreateTexture2DUAV<uint>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		
+		pipeline->RngStates = CreateTexture2DUAV<uint4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
 		pipeline->Lighting = CreateBufferCB<LightingCB>();
 		pipeline->ProjectionToWorld = CreateBufferCB<float4x4>();
@@ -232,6 +270,12 @@ public:
 		if (+(elements & SceneElement::Textures)) {
 			for (int i = 0; i < pipeline->TextureCount; i++)
 				manager->ToGPU(pipeline->Textures[i]);
+
+			for (int i = 0; i < pipeline->GridCount; i++)
+				manager->ToGPU(pipeline->Grids[i]);
+
+			if (pipeline->GridCount > 0)
+				manager->ToGPU(VolumeGeometries);
 		}
 
 		if (+(elements & SceneElement::Camera))
@@ -280,6 +324,12 @@ public:
 				}
 			}
 
+			for (int i = 0; i < desc->Volumes().Count; i++)
+			{
+				pipeline->Transforms->WriteElement(transformIndex, (float4x3)desc->Volumes().Data[i].Transform);
+				transformIndex++;
+			}
+
 			manager->ToGPU(pipeline->Transforms);
 		}
 	}
@@ -318,6 +368,23 @@ public:
 			geometryOffset += instance.Count;
 		}
 
+		for (int i = 0; i < desc->Volumes().Count; i++)
+		{
+			auto volume = desc->Volumes().Data[i];
+
+			auto geometryCollection = manager->CreateProceduralGeometries();
+
+			geometryCollection->CreateGeometry(VolumeGeometries->Slice(volume.GridIndex, 1));
+			
+			manager->ToGPU(geometryCollection, false, true);
+
+			rtxScene->CreateInstance(geometryCollection,
+				255U, geometryOffset, i, (float4x3)volume.Transform
+			);
+
+			geometryOffset += 1;
+		}
+
 		manager->ToGPU(rtxScene, false, true);
 
 		pipeline->Scene = rtxScene;
@@ -332,6 +399,13 @@ public:
 			auto instance = desc->Instances().Data[i];
 
 			rtxScene->UpdateTransform(i, (float4x3)instance.Transform);
+		}
+
+		for (int i = 0; i < desc->Volumes().Count; i++)
+		{
+			auto volume = desc->Volumes().Data[i];
+
+			rtxScene->UpdateTransform(i + desc->Instances().Count, (float4x3)volume.Transform);
 		}
 
 		manager->ToGPU(rtxScene, false, true);
@@ -367,6 +441,17 @@ public:
 						manager->SetHitGroup(pipeline->Hitting, j, 0, 1, geometryOffset);
 				}
 				geometryOffset += instance.Count;
+			}
+
+			for (int i = 0; i < desc->Volumes().Count; i++)
+			{
+				auto volume = desc->Volumes().Data[i];
+				pipeline->PerGeometry.StartTriangle = volume.GridIndex;
+				pipeline->PerGeometry.VertexOffset = -1; // indicating is a volume
+				pipeline->PerGeometry.MaterialIndex = volume.MaterialIndex;
+				pipeline->PerGeometry.TransformIndex = geometryOffset;
+				manager->SetHitGroup(pipeline->HittingVolume, 0, 0, 1, geometryOffset);
+				geometryOffset++;
 			}
 
 			firstTime = false;

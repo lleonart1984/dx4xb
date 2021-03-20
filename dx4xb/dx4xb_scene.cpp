@@ -203,7 +203,53 @@ namespace dx4xb {
 
 #pragma endregion
 
-#pragma region Importing Materials
+#pragma region Importing OBJ
+
+	struct VertexById
+	{
+		int posId;
+		int norId;
+		int texId;
+
+		int IndexValue = -1;
+	};
+
+	struct VertexAllocator {
+		int count;
+		int capacity;
+		VertexById* Allocator;
+
+		VertexAllocator(int capacity) {
+			this->capacity = capacity;
+			this->count = 0;
+			Allocator = new VertexById[capacity];
+			for (int i = 0; i < capacity; i++)
+				Allocator[i].IndexValue = -1;
+		}
+		~VertexAllocator() {
+			delete[] Allocator;
+		}
+
+		bool resolve(int posId, int norId, int texId, int& index) {
+			unsigned int hash = (posId << 15) * 13 ^ (norId + 4) * (~texId);
+			int tableIndex = hash % capacity;
+			while (Allocator[tableIndex].IndexValue >= 0)
+			{
+				if (Allocator[tableIndex].posId == posId && Allocator[tableIndex].norId == norId && Allocator[tableIndex].texId == texId)
+				{
+					index = Allocator[tableIndex].IndexValue;
+					return true;
+				}
+				tableIndex = (tableIndex + 1) % capacity;
+			}
+			// Combination not found in hash table
+			Allocator[tableIndex].posId = posId;
+			Allocator[tableIndex].norId = norId;
+			Allocator[tableIndex].texId = texId;
+			index = Allocator[tableIndex].IndexValue = count++;
+			return false;
+		}
+	};
 
 	struct OBJLoaderState {
 		list<string> materialNames = { };
@@ -708,52 +754,39 @@ namespace dx4xb {
 
 #pragma region Prepare vertex buffer and index buffer
 
-			int totalVertices;
+			int maximVertices = positionIndices.size(); // maxim number of vertices posible. (3 per face)
 
-#ifdef POSITIONS_ARE_VERTICES
-
-			totalVertices = positions.size();
-			SceneVertex* vertices = new SceneVertex[totalVertices];
-
-			// Copy positions
-			for (int i = 0; i < positions.size(); i++)
-				vertices[i].Position = positions[i];
-
-			// Copy normals
-			for (int i = 0; i < normalIndices.size(); i++)
-				vertices[positionIndices[i]].Normal = normals[normalIndices[i]];
-
-			// Copy texture coordinates
-			for (int i = 0; i < normalIndices.size(); i++)
-				vertices[positionIndices[i]].TexCoord = texcoords[textureIndices[i]];
-
-			int vertexOffset = scene->appendVertices(vertices, positions.size()); // bind vertices (vertexOffset should be 0).
-			int indexOffset = scene->appendIndices(&positionIndices.first(), positionIndices.size()); // bind indices (indexOffset should be 0)
-
-#else
-			totalVertices = positionIndices.size();
-
-			SceneVertex* vertices = new SceneVertex[totalVertices];
+			SceneVertex* vertices = new SceneVertex[maximVertices];
 			int* indices = new int[positionIndices.size()];
 
-			// Copy positions
+			VertexAllocator allocator(maximVertices * 2);
+
+			int vertexCount = 0;
+
+			// Copy indices
 			for (int i = 0; i < positionIndices.size(); i++)
 			{
-				vertices[i].Position = positions[positionIndices[i]];
-				indices[i] = i;
+				int posId = positionIndices[i];
+				int norId = normalIndices[i];
+				int texId = textureIndices[i];
+
+				int index;
+				if (!allocator.resolve(posId, norId, texId, index))
+				{
+					vertexCount++;
+					// Create a new vertex at index
+					vertices[index].Position = positions[positionIndices[i]];
+					vertices[index].Normal = normals[normalIndices[i]];
+					vertices[index].Tangent = float3(1, 0, 0);
+					vertices[index].Binormal = float3(0, 1, 0);
+					vertices[index].TexCoord = texcoords[textureIndices[i]];
+				}
+
+				indices[i] = index;
 			}
-
-			// Copy normals
-			for (int i = 0; i < normalIndices.size(); i++)
-				vertices[i].Normal = normals[normalIndices[i]];
-
-			// Copy texture coordinates
-			for (int i = 0; i < normalIndices.size(); i++)
-				vertices[i].TexCoord = texcoords[textureIndices[i]];
-
-			int vertexOffset = scene->appendVertices(vertices, totalVertices); // bind vertices (vertexOffset should be 0).
+			
+			int vertexOffset = scene->appendVertices(vertices, vertexCount); // bind vertices (vertexOffset should be 0).
 			int indexOffset = scene->appendIndices(indices, positionIndices.size()); // bind indices (indexOffset should be 0)
-#endif
 
 #pragma endregion
 
@@ -772,7 +805,7 @@ namespace dx4xb {
 				{
 					nextGroupStart = materialLimits[currentMaterial];
 					if (nextGroupStart != currentGroupStart) {
-						geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+						geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, vertexCount, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
 						currentGroupStart = nextGroupStart;
 					}
 					currentMaterialIndex = getMaterialIndex(usedMaterials[currentMaterial]);
@@ -783,7 +816,7 @@ namespace dx4xb {
 					{
 						nextGroupStart = groupLimits[currentGroup];
 						if (nextGroupStart != currentGroupStart) {
-							geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+							geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, vertexCount, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
 							currentGroupStart = nextGroupStart;
 						}
 						currentGroup++;
@@ -792,7 +825,7 @@ namespace dx4xb {
 			}
 			nextGroupStart = positionIndices.size();
 			if (nextGroupStart != currentGroupStart) { // last range of indices...
-				geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, totalVertices, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
+				geometries.add(scene->appendGeometry(vertexOffset, indexOffset, 0, vertexCount, currentGroupStart, nextGroupStart - currentGroupStart, currentMaterialIndex, -1));
 			}
 
 #pragma endregion
@@ -829,7 +862,38 @@ namespace dx4xb {
 		return state.scene;
 	}
 
-	void SceneManager::ComputeNormals() {
+	void SceneManager::ComputeNormals(bool useCCW, bool weightedNormals) {
+		auto vertices = this->scene->Vertices().Data;
+		int count = this->scene->Vertices().Count;
+
+		auto indices = this->scene->Indices().Data;
+		int indexCount = this->scene->Indices().Count;
+
+		// Clear normals
+		//for (int i = 0; i < count; i++)
+		//	vertices[i].Normal = float3(0, 0, 0);
+
+		// Accumulate per triangle normals
+		for (int i = 0; i < indexCount / 3; i++)
+		{
+			float3 p0 = vertices[indices[i * 3 + 0]].Position;
+			float3 p1 = vertices[indices[i * 3 + 1]].Position;
+			float3 p2 = vertices[indices[i * 3 + 2]].Position;
+			float3 n = cross(p1 - p0, p2 - p0);
+			if (!weightedNormals)
+				n = normalize(n);
+
+			if (dot(vertices[indices[i * 3 + 0]].Normal, n) <= 0.9)
+				vertices[indices[i * 3 + 0]].Normal = n;
+			if (dot(vertices[indices[i * 3 + 1]].Normal, n) <= 0.9)
+				vertices[indices[i * 3 + 1]].Normal = n;
+			if (dot(vertices[indices[i * 3 + 2]].Normal, n) <= 0.9)
+				vertices[indices[i * 3 + 2]].Normal = n;
+		}
+
+		// Normalize
+		for (int i = 0; i < count; i++)
+			vertices[i].Normal = normalize(vertices[i].Normal);
 	}
 
 	void SceneManager::ComputeTangets() {
@@ -849,26 +913,45 @@ namespace dx4xb {
 
 			float2 coordinate_2_1 = vertex2.TexCoord - vertex1.TexCoord;
 
-			if (length(coordinate_2_1) <= 0.0001)
+			if (length(coordinate_2_1) <= 0.000001)
 				coordinate_2_1 = float2(1, 0);
 
 			float2 coordinate_3_1 = vertex3.TexCoord - vertex1.TexCoord;
-			if (length(coordinate_3_1) <= 0.0001)
+			if (length(coordinate_3_1) <= 0.000001)
 				coordinate_3_1 = float2(0, 1);
 
-			float alpha = 1.0f;// / max(0.001f, coordinate_2_1.x * coordinate_3_1.y - coordinate_2_1.y * coordinate_3_1.x);
+			float alpha = (coordinate_2_1.x * coordinate_3_1.y - coordinate_2_1.y * coordinate_3_1.x);
+			if (abs(alpha) < 0.00001)
+				alpha = 0.00001 * sign(alpha);
 
-			vertex1.Tangent = vertex2.Tangent = vertex3.Tangent = float3(
-				max(0.00001, (edge_1_2.x * coordinate_3_1.y) - (edge_1_3.x * coordinate_2_1.y)) * alpha,
-				max(0.00001, (edge_1_2.y * coordinate_3_1.y) - (edge_1_3.y * coordinate_2_1.y)) * alpha,
-				max(0.00001, (edge_1_2.z * coordinate_3_1.y) - (edge_1_3.z * coordinate_2_1.y)) * alpha
-			);
+			float3 T = (float3(
+				((edge_1_2.y * coordinate_3_1.y) - (edge_1_3.y * coordinate_2_1.y)) * alpha,
+				((edge_1_2.x * coordinate_3_1.y) - (edge_1_3.x * coordinate_2_1.y)) * alpha,
+				((edge_1_2.z * coordinate_3_1.y) - (edge_1_3.z * coordinate_2_1.y)) * alpha
+			));
+			T = length(T) > 0.0001 ? T : float3(0, 1, 0);
 
-			vertex1.Binormal = vertex2.Binormal = vertex3.Binormal = float3(
-				max(0.00001, (edge_1_2.x * coordinate_3_1.x) - (edge_1_3.x * coordinate_2_1.x)) * alpha,
-				max(0.00001, (edge_1_2.y * coordinate_3_1.x) - (edge_1_3.y * coordinate_2_1.x)) * alpha,
-				max(0.00001, (edge_1_2.z * coordinate_3_1.x) - (edge_1_3.z * coordinate_2_1.x)) * alpha
-			);
+			vertex1.Tangent = vertex1.Tangent + T;
+			vertex2.Tangent = vertex2.Tangent + T;
+			vertex3.Tangent = vertex3.Tangent + T;
+
+			float3 B = (float3(
+				((edge_1_2.x * coordinate_3_1.x) - (edge_1_3.x * coordinate_2_1.x)) * alpha,
+				((edge_1_2.y * coordinate_3_1.x) - (edge_1_3.y * coordinate_2_1.x)) * alpha,
+				((edge_1_2.z * coordinate_3_1.x) - (edge_1_3.z * coordinate_2_1.x)) * alpha
+			));
+
+			B = length(B) > 0.0001 ? B : float3(1, 0, 0);
+
+			vertex1.Binormal = vertex1.Binormal + B;
+			vertex2.Binormal = vertex2.Binormal + B;
+			vertex3.Binormal = vertex3.Binormal + B;
+		}
+
+		for (int i = 0; i < vertexCount; i++)
+		{
+			VerticesData[i].Binormal = normalize(VerticesData[i].Binormal);
+			VerticesData[i].Tangent = normalize(VerticesData[i].Tangent);
 		}
 	}
 

@@ -21,10 +21,25 @@ namespace dx4xb {
 		}
 	};
 
+	struct VolumeDescription {
+		int GridIndex;
+		int MaterialIndex;
+		float4x4 Transform;
+	};
+
 	struct InstanceDescription {
 		int Count;
 		int* GeometryIndices;
 		float4x4 Transform;
+
+		InstanceDescription Clone() {
+			InstanceDescription newone;
+			newone.Transform = Transform;
+			newone.Count = Count;
+			newone.GeometryIndices = new int[Count];
+			memcpy(newone.GeometryIndices, GeometryIndices, 4 * Count);
+			return newone;
+		}
 
 		void OffsetReferences(int geometryOffset) {
 			for (int i = 0; i < Count; i++)
@@ -141,9 +156,11 @@ namespace dx4xb {
 		list<VolumeMaterial> volumeMaterials = { };
 		list<float4x3> transforms = {};
 		list<string> textures = {};
+		list<string> grids = {};
 
 		list<GeometryDescription> geometries = {};
 		list<InstanceDescription> instances = {};
+		list<VolumeDescription> volumes = {};
 
 		IScene() {}
 	public:
@@ -230,6 +247,12 @@ namespace dx4xb {
 				textures.size()
 			};
 		}
+		SceneData<string> getGrids() const {
+			return SceneData<string>{
+				&grids.first(),
+				grids.size()
+			};
+		}
 		SceneData<GeometryDescription> Geometries() const
 		{
 			return SceneData<GeometryDescription>{
@@ -244,6 +267,12 @@ namespace dx4xb {
 					instances.size()
 			};
 		}
+		SceneData<VolumeDescription> Volumes() {
+			return SceneData<VolumeDescription>{
+				&volumes.first(),
+				volumes.size()
+			};
+		}
 	};
 
 	class SceneBuilder : public IScene {
@@ -252,6 +281,10 @@ namespace dx4xb {
 
 		inline int appendTexture(string texture) {
 			return textures.add(texture);
+		}
+
+		inline int appendGrid(string gridFile) {
+			return grids.add(gridFile);
 		}
 
 		inline int appendMaterial(SceneMaterial material) {
@@ -304,6 +337,14 @@ namespace dx4xb {
 			return instances.add(instance);
 		}
 
+		int appendVolume(int volumeGrid, int materialIndex, float4x4 transform = float4x4(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)) {
+			VolumeDescription volume;
+			volume.GridIndex = volumeGrid;
+			volume.MaterialIndex = materialIndex;
+			volume.Transform = transform;
+			return volumes.add(volume);
+		}
+
 		void appendScene(gObj<IScene> other) {
 			int materialOffset = this->materials.size();
 			int textureOffset = this->textures.size();
@@ -335,7 +376,7 @@ namespace dx4xb {
 
 			for (int i = 0; i < other->instances.size(); i++)
 			{
-				InstanceDescription instance = other->instances[i];
+				InstanceDescription instance = other->instances[i].Clone();
 				instance.OffsetReferences(geometryOffset);
 				this->instances.add(instance);
 			}
@@ -661,7 +702,7 @@ namespace dx4xb {
 		/// <summary>
 		/// Uses position information to average per-vertex normals
 		/// </summary>
-		void ComputeNormals();
+		void ComputeNormals(bool useCCW = true, bool weightedNormals = false);
 
 		/// <summary>
 		/// Uses position and texture coordinates information to compute tangent vectors.

@@ -1,7 +1,9 @@
 #ifndef RANDOMS_H
 #define RANDOMS_H
 
-static uint4 rng_state;
+RWTexture2D<uint4> RNG_STATES : register(u0, space2);
+
+static uint2 RNG__INDEX;
 
 uint TausStep(uint z, int S1, int S2, int S3, uint M)
 {
@@ -15,10 +17,14 @@ uint LCGStep(uint z, uint A, uint C)
 
 float HybridTaus()
 {
+	uint4 rng_state = RNG_STATES[RNG__INDEX];
+
 	rng_state.x = TausStep(rng_state.x, 13, 19, 12, 4294967294);
 	rng_state.y = TausStep(rng_state.y, 2, 25, 4, 4294967288);
 	rng_state.z = TausStep(rng_state.z, 3, 11, 17, 4294967280);
 	rng_state.w = LCGStep(rng_state.w, 1664525, 1013904223);
+
+	RNG_STATES[RNG__INDEX] = rng_state;
 
 	return 2.3283064365387e-10 * (rng_state.x ^ rng_state.y ^ rng_state.z ^ rng_state.w);
 }
@@ -27,7 +33,13 @@ float random() {
 	return HybridTaus();
 }
 
+void AttachToRandomSequence(uint2 index) {
+	RNG__INDEX = index;
+}
+
 void StartRandomSeedForRay(uint2 gridDimensions, int maxBounces, uint2 raysIndex, int bounce, int frame) {
+	RNG__INDEX = raysIndex;
+
 	uint index = 0;
 	uint dim = 1;
 	index += raysIndex.x * dim;
@@ -38,18 +50,11 @@ void StartRandomSeedForRay(uint2 gridDimensions, int maxBounces, uint2 raysIndex
 	dim *= maxBounces;
 	index += frame * dim;
 
-	rng_state = uint4(index, index, index, index);
+	//rng_state = uint4(index, index, index, index);
+	RNG_STATES[raysIndex] = uint4(index, index, index, index);
 
 	for (int i = 0; i < 23 + index % 13; i++)
 		random();
-}
-
-uint4 getRNG() {
-	return rng_state;
-}
-
-void setRNG(uint4 state) {
-	rng_state = state;
 }
 
 float3 randomHSDirection(float3 N, out float NdotD)

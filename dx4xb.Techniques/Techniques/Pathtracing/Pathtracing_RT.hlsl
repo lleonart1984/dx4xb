@@ -12,6 +12,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 	int bounces = 0;
 
+	// Collect all emissive contribution
 	float3 result = 0;
 
 	bool isOutside = true;
@@ -28,12 +29,12 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 		RayPayload payload = (RayPayload)0;
 		if (!Intersect(x, w, payload)) // 
-			return importance * (SampleSkybox(w) + SampleLight(w));// *(bounces > 0));
+			return result + importance * (SampleSkybox(w) + SampleLight(w));// *(bounces > 0));
 
 		Vertex surfel = (Vertex)0;
 		Material material = (Material)0;
 		VolumeMaterial volMaterial = (VolumeMaterial)0;
-		GetHitInfo(
+		bool isSurfaceHit = GetHitInfo(
 			payload.Barycentric,
 			payload.MaterialIndex,
 			payload.TriangleIndex,
@@ -41,18 +42,21 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 			payload.TransformIndex,
 			surfel, material, volMaterial, 0, 0);
 
-		
+		//if (!isSurfaceHit)
+			//return float3(1,1,0,;
+			//return float3(1,0,1);// surfel.P;// float3(1, 1, 0);// surfel.P;
+
+		result += importance * material.Emissive * (1 - material.Roulette.w);
+
 		float d = length(surfel.P - x); // Distance to the hit position.
-		float t = isOutside || volMaterial.Extinction[cmp] == 0 ? 100000000 : -log(max(0.000000000001, 1 - random())) / volMaterial.Extinction[cmp];
+		float t = !isSurfaceHit || isOutside || volMaterial.Extinction[cmp] == 0 ? 100000000 : -log(max(0.000000000001, 1 - random())) / volMaterial.Extinction[cmp];
 
 		[branch]
-		if (t >= d)
+		if (t >= d && isSurfaceHit)
 		{
 			bounces += isOutside;
 			if (bounces >= MAX_PATHTRACING_BOUNCES)
-				return 0;
-
-			//return dot(surfel.N, LightDirection);
+				return result;
 
 			SurfelScattering(x, w, importance, surfel, material);
 
@@ -60,12 +64,14 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 				isOutside = dot(surfel.N, w) >= 0;
 		}
 		else
-		{ // Volume scattering or absorption
-			x += t * w; // free traverse in a medium
+		{ // Volume scattering or absorption in volume or inside geometries
+			x += min(t, d) * w; // free traverse in a medium
+
 			if (random() < 1 - volMaterial.ScatteringAlbedo[cmp]) // absorption instead
-				return 0;
+				return result + importance * material.Emissive;
+			
 			w = ImportanceSamplePhase(volMaterial.G[cmp], w); // scattering event...
 		}
 	}
-	return 0;
+	return result;
 }

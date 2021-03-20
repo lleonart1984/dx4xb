@@ -18,11 +18,12 @@
 #include "Techniques/CVAEPathtracing/NEECVAEPathtracingTechnique.h"
 #include "Techniques/CVAEPathtracing/STFTechnique.h"
 #include "Techniques/CVAEPathtracing/STFXTechnique.h"
+#include "Techniques/VolumeRendering/VPTTechnique.h"
 
 using namespace dx4xb;
 
 #define USE_GUI
-//#define SAVE_STATS
+#define SAVE_STATS
 
 #ifdef USE_GUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -152,6 +153,15 @@ void GuiFor(gObj<IManageScene> t) {
 			ImGuiSliderFlags_Logarithmic
 		);
 
+		materialModified |= ImGui::SliderFloat3(
+			"Emissive",
+			(float*)&t->scene->getScene()->Materials().Data[selectedMaterial].Emissive,
+			0.0f,
+			1000.0f,
+			"%.3f",
+			ImGuiSliderFlags_Logarithmic
+		);
+
 		materialModified |= ImGui::SliderFloat(
 			"Refraction Index",
 			(float*)&t->scene->getScene()->Materials().Data[selectedMaterial].RefractionIndex,
@@ -202,8 +212,6 @@ void GuiFor(gObj<IManageScene> t) {
 #pragma endregion
 }
 
-
-
 template<typename T>
 void RenderGUI(gObj<Technique> t) {
 	gObj<T> h = t.Dynamic_Cast<T>();
@@ -217,7 +225,9 @@ void RenderGUI(gObj<Technique> t) {
 int main(int, char**)
 {
 	int ClientWidth = 1264;
+	//int ClientWidth = 512;
 	int ClientHeight = 761;
+	//int ClientHeight = 512;
 
 	// Create application window
 	WNDCLASSEX wc = { sizeof(WNDCLASSEX), CS_CLASSDC, WndProc, 0L, 0L, GetModuleHandle(NULL), NULL, NULL, NULL, NULL, TEXT("CA4G Example"), NULL };
@@ -270,28 +280,29 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
+	gObj<VPTTechnique> technique = new VPTTechnique();
 	//gObj<BasicSceneTechnique> technique = new BasicSceneTechnique();
 	//gObj<BasicRaycastSample> technique = new BasicRaycastSample();
 	//gObj<PathtracingTechnique> technique = new PathtracingTechnique();
-	gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
+	//gObj<NEEPathtracingTechnique> technique = new NEEPathtracingTechnique();
 	//gObj<CVAEPathtracingTechnique> technique = new CVAEPathtracingTechnique();
 	//gObj<NEECVAEPathtracingTechnique> technique = new NEECVAEPathtracingTechnique();
 	//gObj<STFTechnique> technique = new STFTechnique();
 	//gObj<STFXTechnique> technique = new STFXTechnique();
 	
-
 	gObj<ScreenShotTechnique> takingScreenshot;
 	gObj<ImageSavingTechnique> savingStats;
 	
 	//gObj<SceneManager> scene = new BuddhaScene();
 	//gObj<SceneManager> scene = new LucyAndDrago3();
+	gObj<SceneManager> scene = new CloudScene();
 	//gObj<SceneManager> scene = new BunnyScene();
 	//gObj<SceneManager> scene = new BunnyCornellScene();
-	gObj<SceneManager> scene = new Sponza();
+	//gObj<SceneManager> scene = new Sponza();
 	scene->SetupScene();
 
 	if (technique.Dynamic_Cast<IManageScene>())
-		technique->SetSceneManager(scene);
+		technique.Dynamic_Cast<IManageScene>()->SetSceneManager(scene);
 
 	presenter->Load(technique);
 
@@ -326,6 +337,48 @@ int main(int, char**)
 			RenderGUI<IManageScene>(technique);
 
 			ImGui::End();
+
+			auto camera = scene->getCamera();
+
+			bool cameraChanged = false;
+
+			auto delta = ImGui::GetMouseDragDelta(1);
+
+			if (ImGui::IsKeyDown(ImGui::GetKeyIndex(ImGuiKey_Space)))
+				camera.RotateAround(delta.x * 0.01f, -delta.y * 0.01f);
+			else
+				camera.Rotate(delta.x * 0.01f, -delta.y * 0.01f);
+
+			auto deltaTime = ImGui::GetIO().DeltaTime;
+
+			if (delta.x != 0 || delta.y != 0)
+			{
+				cameraChanged = true;
+				ImGui::ResetMouseDragDelta(1);
+			}
+			if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_UpArrow)))
+			{
+				camera.MoveForward(deltaTime);
+				cameraChanged = true;
+			}
+			if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_DownArrow)))
+			{
+				camera.MoveBackward(deltaTime);
+				cameraChanged = true;
+			}
+			if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_LeftArrow)))
+			{
+				camera.MoveLeft(deltaTime);
+				cameraChanged = true;
+			}
+			if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_RightArrow)))
+			{
+				camera.MoveRight(deltaTime);
+				cameraChanged = true;
+			}
+
+			if (cameraChanged)
+				scene->setCamera(camera);
 		}
 #endif
 		
@@ -341,8 +394,8 @@ int main(int, char**)
 			int frames;
 			asStatistics->getAccumulators(sumTexture, sqrSumTexture, frames);
 
-			if (frames > 1)
-				if ((frames & (frames - 1)) == 0) // power of 2
+			if (frames >= (1 << 16))
+				//if ((frames & (frames - 1)) == 0) // power of 2
 				{
 					char number[100];
 					_itoa_s(frames, number, 10);
@@ -359,6 +412,8 @@ int main(int, char**)
 					savingStats->FileName = fileName + dx4xb::string("_sqrSum.bin");
 					savingStats->TextureToSave = sqrSumTexture;
 					presenter->ExecuteTechnique(savingStats); // saving sqr sum
+
+					break;
 				}
 		}
 #endif

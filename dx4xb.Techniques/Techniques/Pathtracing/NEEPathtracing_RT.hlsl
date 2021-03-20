@@ -41,6 +41,11 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 			payload.TransformIndex,
 			surfel, material, volMaterial, 0, 0);
 
+		directContribution += importance * material.Emissive;
+
+		//return normalize(surfel.N);
+		//return dot(-D, surfel.N) > 0 ? float3(1, 1, 1) : float3(1, 0, 0);
+
 		float d = length(surfel.P - x); // Distance to the hit position.
 		float t = isOutside || volMaterial.Extinction[cmp] == 0 ? 100000000 : -log(max(0.000000000001, 1 - random())) / volMaterial.Extinction[cmp];
 

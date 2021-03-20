@@ -816,28 +816,29 @@ public:
 
 	void SetupScene() {
 
-		camera.Position = float3(0, 0.5, 1.7);
-		camera.Target = float3(0, 0.4, 0);
+		camera.Position = float3(0.8, 0.8, 1.7);
+		camera.Target = float3(0, 0.3, 0);
 		//camera.Position = float3(0, 0.5, 1.7);
 		//camera.Target = float3(0, 0.4, 0);
 
-		lights[0].Direction = normalize(float3(1, 1, -1));
-		lights[0].Intensity = float3(4, 4, 4);
+		lights[0].Direction = normalize(float3(1, 1, 1));
+		lights[0].Intensity = float3(1, 1, 1) * 2;
 
 		dx4xb::string desktopPath = desktop_directory();
-		dx4xb::string lucyPath = desktopPath + dx4xb::string("\\Models\\newLucy.obj");
 
-		auto lucyScene = OBJLoader::Load(lucyPath);
-		lucyScene->Normalize(
-			SceneNormalization::Scale |
-			SceneNormalization::Maximum |
-			//SceneNormalization::MinX |
-			SceneNormalization::MinY |
-			//SceneNormalization::MinZ |
-			SceneNormalization::Center
-		);
-		scene->appendScene(lucyScene);
+		//dx4xb::string lucyPath = desktopPath + dx4xb::string("\\Models\\newLucy.obj");
+		//auto lucyScene = OBJLoader::Load(lucyPath);
+		//lucyScene->Normalize(
+		//	SceneNormalization::Scale |
+		//	SceneNormalization::Maximum |
+		//	//SceneNormalization::MinX |
+		//	SceneNormalization::MinY |
+		//	//SceneNormalization::MinZ |
+		//	SceneNormalization::Center
+		//);
+		//scene->appendScene(lucyScene);
 
+		
 		dx4xb::string dragoPath = desktopPath + dx4xb::string("\\Models\\newDragon.obj");
 		auto dragoScene = OBJLoader::Load(dragoPath);
 		dragoScene->Normalize(
@@ -849,13 +850,45 @@ public:
 			SceneNormalization::Center
 		);
 		scene->appendScene(dragoScene);
+		/*scene->appendScene(dragoScene);
+		scene->appendScene(dragoScene);
+		scene->appendScene(dragoScene);*/
 
 		dx4xb::string platePath = desktopPath + dx4xb::string("\\Models\\plate.obj");
 		auto plateScene = OBJLoader::Load(platePath);
 		scene->appendScene(plateScene);
 
-		setGlossyMaterial(0, float3(1,1,1), 40, 1); // glossy lucy
-		setDiffuseMaterial(1, float3(1,0.9, 0.5), 1); // diffuse drago
+		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1940.xyz");
+		int gridIndex = scene->appendGrid(gridPath);
+		scene->appendMaterial(SceneMaterial());
+		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
+				float3(600, 600, 600), // sigma
+				float3(0.9999, 0.99999, 0.99995),
+				float3(0.9, 0.9, 0.9)
+			});
+		scene->appendVolume(gridIndex, volMat, Transforms::Translate(0,0.5,0));
+
+
+		setGlossyMaterial(0, float3(1, 1, 1), 100, 0.8); // glossy lucy
+		
+		setDiffuseMaterial(1, float3(1, 0.9, 0.5), 1); // diffuse drago
+		
+		setGlassMaterial(2, 1, 0.7);
+
+		setGlassMaterial(3, 1, 0.7); // diffuse drago
+		scene->VolumeMaterials().Data[3] = VolumeMaterial{
+			float3(400, 600, 800), // sigma
+			float3(0.999, 0.999, 0.995),
+			float3(0.6, 0.6, 0.6)
+		};
+
+		setMirrorMaterial(4, 0.3);
+
+		//ComputeNormals();
+		//ComputeTangets();
+
+		//scene->Materials().Data[1].Emissive = float3(1, 1, 1)*6;
+
 		//setMirrorMaterial(2, 0.3); // reflective plate
 
 		//scene->VolumeMaterials().Data[0] = VolumeMaterial{
@@ -880,11 +913,61 @@ public:
 	}
 
 	void SetTransforms(float time) {
-		scene->Instances().Data[0].Transform =
+
+		/*for (int i=0; i<4; i++)
+			scene->Instances().Data[i].Transform =
+				mul(InitialTransforms[i], mul(Transforms::RotateY(time + 0.9), Transforms::Translate(-1 + i*0.6, 0.0, 0)));*/
+
+		/*scene->Instances().Data[0].Transform =
 			mul(InitialTransforms[0], mul(Transforms::RotateY(time), Transforms::Translate(0.4, 0.0, 0)));
 		scene->Instances().Data[1].Transform =
-			mul(InitialTransforms[1], mul(Transforms::RotateY(time), Transforms::Translate(-0.3, 0.0, 0)));
+			mul(InitialTransforms[1], mul(Transforms::RotateY(time), Transforms::Translate(-0.3, 0.0, 0)));*/
 		OnUpdated(SceneElement::InstanceTransforms);
+	}
+
+	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
+		return;//
+	}
+};
+
+class CloudScene : public SceneManager {
+public:
+	CloudScene() :SceneManager() {
+	}
+	~CloudScene() {}
+
+	void SetupScene() {
+
+		camera.Position = float3(0.4, 0.4, 1.1);
+		//camera.Position = float3(0.4, 0.4, 0.65);
+		camera.Target = float3(0.0, 0.0, 0);
+		//camera.Target = float3(0.05, 0.0, 0);
+
+		lights[0].Direction = normalize(float3(1, 1, -1));
+		lights[0].Intensity = float3(1, 1, 1) * 3;
+
+		dx4xb::string desktopPath = desktop_directory();
+
+		dx4xb::string platePath = desktopPath + dx4xb::string("\\Models\\plate.obj");
+		auto plateScene = OBJLoader::Load(platePath);
+		scene->appendScene(plateScene);
+
+		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
+		int gridIndex = scene->appendGrid(gridPath);
+		scene->appendMaterial(SceneMaterial());
+		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
+				float3(600, 600, 600)*1, // sigma
+				float3(1, 1, 1),
+				float3(0.875, 0.875, 0.875)
+			});
+		scene->appendVolume(gridIndex, volMat, Transforms::Translate(0, 0.5, 0));
+
+		SetTransforms(0);
+
+		SceneManager::SetupScene();
+	}
+
+	void SetTransforms(float time) {
 	}
 
 	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
@@ -1183,7 +1266,7 @@ public:
 		camera.Target = float3(0, 0.07f, 0);
 
 		lights[0].Direction = normalize(float3(0, 1, 0));
-		lights[0].Intensity = float3(6, 6, 6);
+		lights[0].Intensity = float3(6, 6, 6)*4;
 
 		dx4xb::string desktopPath = desktop_directory();
 
@@ -1199,6 +1282,8 @@ public:
 			//SceneNormalization::Center
 		);
 		scene->appendScene(modelScene);
+
+		ComputeNormals();
 		
 		ComputeTangets();
 		

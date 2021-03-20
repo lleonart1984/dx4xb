@@ -4630,7 +4630,8 @@ namespace dx4xb {
 			gObj<B> result = nullptr;
 			result.counter = this->counter;
 			result._this = this->_this;
-			result.AddReference();
+			if (!isNull())
+				result.AddReference();
 			return result;
 		}
 
@@ -4689,7 +4690,8 @@ namespace dx4xb {
 			gObj<T> obj;
 			obj._this = static_cast<T*>(_this);
 			obj.counter = counter;
-			obj.AddReference();
+			if (!isNull())
+				obj.AddReference();
 			return obj;
 		}
 
@@ -5372,7 +5374,7 @@ namespace dx4xb {
 			return Create(D3D12_FILTER_MIN_MAG_LINEAR_MIP_POINT,
 				AddressU,
 				AddressV,
-				AddressW, 0, 0, D3D12_COMPARISON_FUNC_ALWAYS, float4(0, 0, 0, 0), 0, 0);
+				AddressW, 0, 1, D3D12_COMPARISON_FUNC_ALWAYS, float4(0, 0, 0, 0), 0, 0);
 		}
 
 		// Creates a default anisotropic sampling object
@@ -5428,6 +5430,7 @@ namespace dx4xb {
 		friend GraphicsManager;
 		friend RaytracingManager;
 		friend wBindings;
+		friend wScheduler;
 		friend TriangleGeometryCollection;
 		friend ProceduralGeometryCollection;
 		friend InstanceCollection;
@@ -14379,7 +14382,7 @@ namespace dx4xb {
 
 		void AddDescriptorRange(int slot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resource);
 
-		void AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count);
+		void AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count, int capacity = -1);
 
 		void AddStaticSampler(int slot, const Sampler& sampler);
 	
@@ -14478,60 +14481,60 @@ namespace dx4xb {
 				(void*)&texture);
 		}
 
-		void SMP_Array(int slot, gObj<Sampler>*& const samplers, int& const count) {
+		void SMP_Array(int slot, gObj<Sampler>*& const samplers, int& const count, int capacity = -1) {
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER,
 				D3D12_RESOURCE_DIMENSION_UNKNOWN,
-				(void*)&samplers, &count);
+				(void*)&samplers, &count, capacity);
 		}
 
-		void SRV_Array(int slot, gObj<Buffer>*& const buffers, int& const count)
+		void SRV_Array(int slot, gObj<Buffer>*& const buffers, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
 				D3D12_RESOURCE_DIMENSION_BUFFER,
-				(void*)&buffers, &count);
+				(void*)&buffers, &count, capacity);
 		}
-		void SRV_Array(int slot, gObj<Texture1D>*& const textures, int& const count)
+		void SRV_Array(int slot, gObj<Texture1D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
-				(void*)&textures, &count);
+				(void*)&textures, &count, capacity);
 		}
-		void SRV_Array(int slot, gObj<Texture2D>*& const textures, int& const count)
+		void SRV_Array(int slot, gObj<Texture2D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
 				(void*)&textures, &count);
 		}
-		void SRV_Array(int slot, gObj<Texture3D>*& const textures, int& const count)
+		void SRV_Array(int slot, gObj<Texture3D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
-				(void*)&textures, &count);
+				(void*)&textures, &count, capacity);
 		}
 
-		void UAV_Array(int slot, gObj<Buffer>*& const buffers, int& const count)
+		void UAV_Array(int slot, gObj<Buffer>*& const buffers, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
 				D3D12_RESOURCE_DIMENSION_BUFFER,
-				(void*)&buffers, &count);
+				(void*)&buffers, &count, capacity);
 		}
-		void UAV_Array(int slot, gObj<Texture1D>*& const textures, int& const count)
+		void UAV_Array(int slot, gObj<Texture1D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE1D,
-				(void*)&textures, &count);
+				(void*)&textures, &count, capacity);
 		}
-		void UAV_Array(int slot, gObj<Texture2D>*& const textures, int& const count)
+		void UAV_Array(int slot, gObj<Texture2D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE2D,
-				(void*)&textures, &count);
+				(void*)&textures, &count, capacity);
 		}
-		void UAV_Array(int slot, gObj<Texture3D>*& const textures, int& const count)
+		void UAV_Array(int slot, gObj<Texture3D>*& const textures, int& const count, int capacity = -1)
 		{
 			AddDescriptorRange(slot, D3D12_DESCRIPTOR_RANGE_TYPE_UAV,
 				D3D12_RESOURCE_DIMENSION_TEXTURE3D,
-				(void*)&textures, &count);
+				(void*)&textures, &count, capacity);
 		}
 
 		bool HasSomeBindings();
@@ -16181,6 +16184,10 @@ namespace dx4xb {
 		/// Loads the content of a file into a texture2D.
 		/// </summary>
 		gObj<Texture2D> LoadTexture2D(dx4xb::string filePath);
+
+		gObj<Texture3D> LoadTexture3D(dx4xb::string filePath);
+
+		gObj<Texture3D> LoadTexture3DMipMap(dx4xb::string filePath);
 
 		/// <summary>
 		///	Saves the content of a texture to a file.

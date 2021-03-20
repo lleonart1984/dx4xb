@@ -105,6 +105,15 @@
     <ClInclude Include="Techniques\Examples\DepthComplexityTechnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\VPTBase_CS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\VPTTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\MultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -128,5 +137,6 @@
     <FxCompile Include="Techniques\Examples\Demo_PS.hlsl" />
     <FxCompile Include="Techniques\Examples\Demo_VS.hlsl" />
     <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\VPT_CS.hlsl" />
   </ItemGroup>
 </Project>

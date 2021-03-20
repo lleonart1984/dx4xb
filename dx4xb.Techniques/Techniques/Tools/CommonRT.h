@@ -10,7 +10,8 @@ StructuredBuffer<int> IndexBuffer				: register(t1, space1); // Indices of geome
 StructuredBuffer<float4x3> Transforms			: register(t2, space1); // All materials.
 StructuredBuffer<Material> Materials			: register(t3, space1); // All materials.
 StructuredBuffer<VolumeMaterial> VolMaterials	: register(t4, space1); // All materials.
-Texture2D<float4> Textures[500]					: register(t5, space1); // All textures used
+Texture3D<float> Grids[10]						: register(t5, space1); // All Grids can be used in this pathtracer
+Texture2D<float4> Textures[500]					: register(t15, space1); // All textures used
 
 RWTexture2D<float4> Output						: register(u0, space1); // Final Output image from the ray-trace
 
@@ -25,6 +26,7 @@ ConstantBuffer<ObjInfo> ObjectInfo	: register(b0, space1);
 
 // Used for texture mapping
 SamplerState gSmp : register(s0, space1);
+SamplerState VolumeSampler : register(s1, space1);
 
 // Given a surfel will modify the normal with texture maps, using
 // Bump mapping and masking textures.
@@ -38,7 +40,7 @@ void AugmentHitInfoWithTextureMapping(inout Vertex surfel, inout Material materi
 	float3x3 TangentToWorld = { surfel.T, surfel.B, surfel.N };
 	// Change normal according to bump map
 	surfel.N = normalize(mul(BumpTex * 2 - 1, TangentToWorld));
-	//surfel.N = normalize(surfel.T);// normalize(mul(float3(0.5, 0.5, 1) * 2 - 1, TangentToWorld));
+	//surfel.N = normalize(surfel.N);// normalize(mul(float3(0.5, 0.5, 1) * 2 - 1, TangentToWorld));
 
 	material.Diffuse *= DiffTex.xyz;// *(MaskTex.x); // set transparent if necessary.
 	material.Specular.xyz = max(material.Specular.xyz, SpecularTex);
@@ -52,7 +54,7 @@ void GetIndices(out int transformIndex, out int materialIndex, out int triangleI
 	vertexOffset = ObjectInfo.VertexOffset;
 }
 
-void GetHitInfo(
+bool GetHitInfo(
 	float3 barycentrics, 
 	int materialIndex,
 	int triangleIndex, 
@@ -63,20 +65,32 @@ void GetHitInfo(
 	out VolumeMaterial volumeMaterial,
 	float ddx, float ddy)
 {
-	Vertex v1 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 0] + vertexOffset];
-	Vertex v2 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 1] + vertexOffset];
-	Vertex v3 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 2] + vertexOffset];
-	Vertex s = {
-		v1.P * barycentrics.x + v2.P * barycentrics.y + v3.P * barycentrics.z,
-		v1.N * barycentrics.x + v2.N * barycentrics.y + v3.N * barycentrics.z,
-		v1.C * barycentrics.x + v2.C * barycentrics.y + v3.C * barycentrics.z,
-		v1.T * barycentrics.x + v2.T * barycentrics.y + v3.T * barycentrics.z,
-		v1.B * barycentrics.x + v2.B * barycentrics.y + v3.B * barycentrics.z
-	};
+	if (vertexOffset >= 0) // surface hit 
+	{
+		float3 coords = float3(1 - barycentrics.x - barycentrics.y, barycentrics.x, barycentrics.y);
 
-	surfel = Transform(s, Transforms[transformIndex]);
+		Vertex v1 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 0] + vertexOffset];
+		Vertex v2 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 1] + vertexOffset];
+		Vertex v3 = VertexBuffer[IndexBuffer[triangleIndex * 3 + 2] + vertexOffset];
+		Vertex s = {
+			v1.P * coords.x + v2.P * coords.y + v3.P * coords.z,
+			v1.N * coords.x + v2.N * coords.y + v3.N * coords.z,
+			v1.C * coords.x + v2.C * coords.y + v3.C * coords.z,
+			v1.T * coords.x + v2.T * coords.y + v3.T * coords.z,
+			v1.B * coords.x + v2.B * coords.y + v3.B * coords.z
+		};
 
+		surfel = Transform(s, Transforms[transformIndex]);
+	}
+	else
+	{
+		surfel = (Vertex)0;
+		surfel.P = mul(float4(barycentrics, 1), Transforms[transformIndex]).xyz;
+	}
 	material = Materials[materialIndex];
 	volumeMaterial = VolMaterials[materialIndex];
 	AugmentHitInfoWithTextureMapping(surfel, material, ddx, ddy);
+
+	return vertexOffset >= 0;
 }
+

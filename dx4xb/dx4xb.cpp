@@ -381,10 +381,10 @@ namespace dx4xb {
 			);
 		}
 		//// Get current RT
-		//auto currentRT = this->w_device->RenderTargets[this->CurrentFrameIndex];
+		auto currentRT = this->w_device->RenderTargets[this->CurrentFrameIndex];
 		//// Place a barrier at thread 0 cmdList to Present
-		//DX_ResourceWrapper* rtWrapper = (DX_ResourceWrapper*)currentRT->__InternalDXWrapper;
-		//rtWrapper->AddBarrier(this->Engines[0].threadInfos[0].cmdList, state);
+		wResource* rtWrapper = currentRT->w_resource;
+		rtWrapper->AddBarrier(this->Engines[0].threadInfos[0].cmdList, state);
 	}
 
 	void dx4xb::wScheduler::FinishFrame()
@@ -946,7 +946,7 @@ namespace dx4xb {
 		D3D12_DESCRIPTOR_RANGE range = { };
 		range.BaseShaderRegister = slot;
 		range.NumDescriptors = 1;
-		range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.OffsetInDescriptorsFromTableStart = 0;// D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		range.RangeType = type;
 		range.RegisterSpace = space;
 
@@ -960,7 +960,7 @@ namespace dx4xb {
 		__InternalBindingObject->AddBinding(collectGlobal, b);
 	}
 
-	void ComputeBinder::AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count)
+	void ComputeBinder::AddDescriptorRange(int initialSlot, D3D12_DESCRIPTOR_RANGE_TYPE type, D3D12_RESOURCE_DIMENSION dimension, void* resourceArray, int* count, int capacity)
 	{
 		D3D12_ROOT_PARAMETER p = { };
 		p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -968,8 +968,8 @@ namespace dx4xb {
 		p.ShaderVisibility = visibility;
 		D3D12_DESCRIPTOR_RANGE range = { };
 		range.BaseShaderRegister = initialSlot;
-		range.NumDescriptors = -1;// undefined this moment
-		range.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+		range.NumDescriptors = capacity;// -1 to make unbound
+		range.OffsetInDescriptorsFromTableStart = 0;// D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 		range.RangeType = type;
 		range.RegisterSpace = space;
 
@@ -1707,7 +1707,7 @@ namespace dx4xb {
 
 		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
 		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
 
 		desc.Triangles.VertexBuffer = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
 		{
@@ -1739,7 +1739,7 @@ namespace dx4xb {
 
 		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
 		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
 
 		desc.Triangles.VertexBuffer = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
 		{
@@ -1791,7 +1791,7 @@ namespace dx4xb {
 		boxes->w_resource->AddBarrier(wrapper->cmdList, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
 		D3D12_RAYTRACING_GEOMETRY_DESC desc{ };
 		desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE::D3D12_RAYTRACING_GEOMETRY_TYPE_PROCEDURAL_PRIMITIVE_AABBS;
-		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NONE;
+		desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
 		//desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAGS::D3D12_RAYTRACING_GEOMETRY_FLAG_NO_DUPLICATE_ANYHIT_INVOCATION;
 		desc.AABBs.AABBCount = boxes->ElementCount();
 		desc.AABBs.AABBs = D3D12_GPU_VIRTUAL_ADDRESS_AND_STRIDE
@@ -3985,6 +3985,216 @@ namespace dx4xb {
 		return texture;
 	}
 
+	void ComputeTotalSum(float* sum, int dim, int width, int height, int slices) {
+		int dimxy = width * height;
+
+		// Accumulate in z direction
+		for (int y = 0; y < height; y++)
+			for (int x = 0; x < width; x++)
+			{
+				for (int z = 1; z < slices; z++)
+					sum[3 * (z * dimxy + y * width + x) + dim] += sum[3 * ((z - 1) * dimxy + y * width + x) + dim];
+			}
+
+		// Accumulate in y direction
+		for (int z = 0; z < slices; z++)
+			for (int x = 0; x < width; x++)
+			{
+				for (int y = 1; y < height; y++)
+					sum[3 * (z * dimxy + y * width + x) + dim] += sum[3 * (z * dimxy + (y - 1) * width + x) + dim];
+			}
+
+		// Accumulate in x direction
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+			{
+				for (int x = 1; x < width; x++)
+					sum[3 * (z * dimxy + y * width + x) + dim] += sum[3 * (z * dimxy + y * width + (x - 1)) + dim];
+			}
+	}
+
+	gObj<Texture3D> dx4xb::DeviceManager::LoadTexture3D(dx4xb::string filePath)
+	{
+		FILE* f;
+		if (fopen_s(&f, filePath.c_str(), "r"))
+			throw Exception::FromError(Errors::Invalid_Operation, "Grid file not found");
+
+		int width, height, slices;
+		double vx, vy, vz;
+		fread_s(&width, 4, 4, 1, f);
+		fread_s(&height, 4, 4, 1, f);
+		fread_s(&slices, 4, 4, 1, f);
+		fread_s(&vx, 8, 8, 1, f);
+		fread_s(&vy, 8, 8, 1, f);
+		fread_s(&vz, 8, 8, 1, f);
+		float3* data = new float3[width * height * slices];
+		float* xorderData = new float[width * height * slices];
+		fread_s(xorderData, width * height * slices * 4, 4, width * height * slices, f);
+		fclose(f);
+
+		int p = 0;
+		float maxValue = 0;
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+				{
+					float d = xorderData[x * height * slices + y * slices + z];
+					data[p++].x = max(0, d);
+					maxValue = max(maxValue, d);
+				}
+
+		float maxDim = maxf(width, maxf(height, slices));
+		float factor = 1.0f / powf(maxDim, 3);
+
+		for (int i = 0; i < p; i++)
+		{
+			data[i].x /= maxValue; // normalize densities 0..1
+			data[i].y = data[i].x * factor;
+			data[i].z = powf(data[i].x, 2) * factor;
+		}
+		
+		ComputeTotalSum((float*)data, 1, width, height, slices);
+		ComputeTotalSum((float*)data, 2, width, height, slices);
+
+		gObj<Texture3D> result = CreateTexture3DSRV<float3>(width, height, slices);
+		result->Write((byte*)data, false);
+
+		delete[] xorderData;
+
+		delete[] data;
+		return result;
+	}
+
+	int greaterPow2(unsigned int v) {
+		v--;
+		v |= v >> 1;
+		v |= v >> 2;
+		v |= v >> 4;
+		v |= v >> 8;
+		v |= v >> 16;
+		v++;
+		return v;
+	}
+
+	float3 outsideData = float3(0, 0, 0);
+
+	float3* sampleData(float3* data, int x, int y, int z, int width, int height, int slices) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= slices)
+			return &outsideData;
+		return &data[z * (height * width) + y * width + x];
+	}
+
+	gObj<Texture3D> dx4xb::DeviceManager::LoadTexture3DMipMap(dx4xb::string filePath)
+	{
+		FILE* f;
+		if (fopen_s(&f, filePath.c_str(), "r"))
+			throw Exception::FromError(Errors::Invalid_Operation, "Grid file not found");
+
+		int width, height, slices;
+		double vx, vy, vz;
+		fread_s(&width, 4, 4, 1, f);
+		fread_s(&height, 4, 4, 1, f);
+		fread_s(&slices, 4, 4, 1, f);
+		fread_s(&vx, 8, 8, 1, f);
+		fread_s(&vy, 8, 8, 1, f);
+		fread_s(&vz, 8, 8, 1, f);
+		float* xorderData = new float[width * height * slices];
+		fread_s(xorderData, width * height * slices * 4, 4, width * height * slices, f);
+		fclose(f);
+
+		int pWidth = greaterPow2(width);
+		int pHeight = greaterPow2(height);
+		int pSlices = greaterPow2(slices);
+
+		int p = 0;
+
+		int mipWidth = pWidth;
+		int mipHeight = pHeight;
+		int mipSlices = pSlices;
+
+		// Compute Mip Maps memory.
+		int mips = 0;
+		while (mipWidth > 0 && mipHeight > 0 && mipSlices > 0) {
+			p += mipWidth * mipHeight * mipSlices;
+			mips++;
+			mipWidth /= 2;
+			mipHeight /= 2;
+			mipSlices /= 2;
+		}
+
+		// Allocate memory
+		float3* data = new float3[p];
+		for (int i = 0; i < p; i++)
+			data[i] = float3(0, 1, 0); // default value 0, min value in 1 to be minimized, max value in 0 to be maximized
+
+		// Compute densities
+		float maxValue = 0;
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+				{
+					float d = xorderData[x * height * slices + y * slices + z];
+					sampleData(data, x,y,z, pWidth, pHeight, pSlices)->x = max(0, d);
+					maxValue = max(maxValue, d);
+				}
+		// Normalize densities 0..1
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x /= maxValue;
+
+		// Compute max and min
+		for (int z = 0; z < pSlices; z++)
+			for (int y = 0; y < pHeight; y++)
+				for (int x = 0; x < pWidth; x++)
+				{
+					float center = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x;
+					float maxim = center;
+					float minim = center;
+					for (int dz = -1 ; dz <= 1; dz++)
+						for (int dy = -1; dy <= 1; dy++)
+							for (int dx = -1; dx <= 1; dx++)
+							{
+								float smp = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x * 0.5 + center * 0.5;
+								maxim = maxf(maxim, smp);
+								minim = minf(minim, smp);
+							}
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->y = minim;
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->z = maxim;
+				}
+
+		int nWidth = pWidth;
+		int nHeight = pHeight;
+		int nSlices = pSlices;
+		int offset = 0;
+		// Compute Mip Maps of x: sum, y: mins, z: maxs
+		for (int mip = 0; mip < mips; mip++) {
+			int nextOffset = offset + nWidth * nHeight * nSlices;
+			for (int z = 0; z < nSlices; z++)
+				for (int y = 0; y < nHeight; y++)
+					for (int x = 0; x < nWidth; x++)
+					{
+						float3* nextData = sampleData(data + nextOffset, x / 2, y / 2, z / 2, nWidth/2, nHeight/2, nSlices/2);
+						float3* currentData = sampleData(data + offset, x, y, z, nWidth, nHeight, nSlices);
+						nextData->x += currentData->x / 8.0f;
+						nextData->y = min(nextData->y, currentData->y);
+						nextData->z = max(nextData->z, currentData->z);
+					}
+			offset = nextOffset;
+			nWidth /= 2;
+			nHeight /= 2;
+			nSlices /= 2;
+		}
+
+		gObj<Texture3D> result = CreateTexture3DSRV<float3>(pWidth, pHeight, pSlices, mips);
+		result->Write((byte*)data, false);
+
+		delete[] xorderData;
+
+		delete[] data;
+		return result;
+	}
+
 	void dx4xb::DeviceManager::Save(gObj<Texture2D> texture, dx4xb::string filePath)
 	{
 		gObj<TextureData> data = TextureData::CreateEmpty(texture->Width(), texture->Height(), 1, 1, texture->w_resource->desc.Format);
@@ -4056,6 +4266,8 @@ namespace dx4xb {
 
 	void Presenter::EndFrame() {
 		// Wait for all 
+		device->scheduler->PrepareRenderTarget(D3D12_RESOURCE_STATE_RENDER_TARGET);
+		
 		device->scheduler->FinishFrame();
 
 		auto hr = device->swapChain->Present(0, 0);

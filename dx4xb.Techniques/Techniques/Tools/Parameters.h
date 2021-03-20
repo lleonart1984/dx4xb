@@ -7,7 +7,7 @@
 #define USE_CVAE_X
 
 // Use skybox to show fancy scenes
-#define USE_SKYBOX
+//#define USE_SKYBOX
 
 // Max number of outside bounces allowed in a Pathtracer
 #define MAX_PATHTRACING_BOUNCES 5
