@@ -81,7 +81,7 @@ public:
 		float* tempSTable = new float[BINS_G * BINS_R * BINS_LOGN];
 		fread((void*)tempSTable, 4, BINS_G * BINS_R * BINS_LOGN, stfFile);
 		pipeline->CDF_LogN->Write(tempSTable);
-		delete tempSTable;
+		delete[] tempSTable;
 
 		tempSTable = new float[BINS_G * BINS_R * BINS_LOGN * BINS_X / 2];
 		fread((void*)tempSTable, 4, BINS_G * BINS_R * BINS_LOGN * BINS_X / 2, stfFile);

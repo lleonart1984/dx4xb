@@ -114,6 +114,9 @@
     <ClInclude Include="Techniques\VolumeRendering\MultiscatteringModels.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\MultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -138,5 +141,6 @@
     <FxCompile Include="Techniques\Examples\Demo_VS.hlsl" />
     <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
     <FxCompile Include="Techniques\VolumeRendering\VPT_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEST_RT.hlsl" />
   </ItemGroup>
 </Project>

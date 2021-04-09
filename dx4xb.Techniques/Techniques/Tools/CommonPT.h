@@ -7,6 +7,7 @@ cbuffer AccumulativeInfo : register(b1, space1) {
 	uint NumberOfPasses;
 	uint ShowComplexity;
 	float PathtracingRatio;
+	uint AnimatedFrame;
 }
 
 RWTexture2D<float3> Accumulation : register(u1, space1); // Auxiliar Accumulation Buffer
