@@ -241,7 +241,7 @@ void RayGen()
 	uint2 raysIndex = DispatchRaysIndex().xy;
 
 	uint2 raysDimensions = DispatchRaysDimensions().xy;
-	StartRandomSeedForRay(raysDimensions, 1, raysIndex, 0, NumberOfPasses);
+	StartRandomSeedForRay(raysDimensions, 1, raysIndex, 0, NumberOfPasses + (AnimatedFrame ^ 37)*1000000);
 
 	float2 coord = (raysIndex.xy + float2(random(), random())) / raysDimensions;
 

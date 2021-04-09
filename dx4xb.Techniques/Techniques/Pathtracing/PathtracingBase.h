@@ -124,6 +124,7 @@ public:
 			int Pass;
 			int ShowComplexity;
 			float PathtracingRatio;
+			int Seed;
 		} AccumulativeInfo;
 
 		// Space 0
@@ -359,7 +360,7 @@ public:
 					-1);
 			}
 
-			manager->ToGPU(geometryCollection, false, true);
+			manager->ToGPU(geometryCollection, true, true);
 
 			rtxScene->CreateInstance(geometryCollection,
 				255U, geometryOffset, i, (float4x3)instance.Transform
@@ -376,7 +377,7 @@ public:
 
 			geometryCollection->CreateGeometry(VolumeGeometries->Slice(volume.GridIndex, 1));
 			
-			manager->ToGPU(geometryCollection, false, true);
+			manager->ToGPU(geometryCollection, true, true);
 
 			rtxScene->CreateInstance(geometryCollection,
 				255U, geometryOffset, i, (float4x3)volume.Transform
@@ -408,7 +409,7 @@ public:
 			rtxScene->UpdateTransform(i + desc->Instances().Count, (float4x3)volume.Transform);
 		}
 
-		manager->ToGPU(rtxScene, false, true);
+		manager->ToGPU(rtxScene, true, true);
 	}
 
 	void DrawScene(gObj<RaytracingManager> manager) {
@@ -461,6 +462,7 @@ public:
 		{
 			//pipeline->AccumulativeInfo.PathtracingRatio = 1;
 			pipeline->AccumulativeInfo.Pass = 0;
+			pipeline->AccumulativeInfo.Seed = rand();
 			manager->ClearUAV(pipeline->Accumulation, uint4(0));
 			manager->ClearUAV(pipeline->Complexity, uint4(0));
 		}

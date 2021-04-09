@@ -2241,6 +2241,7 @@ namespace dx4xb {
 
 	void dx4xb::CopyManager::ToGPU(gObj<ResourceView> resource)
 	{
+		if (resource.isNull()) return;
 		resource->w_resource->UpdateResourceFromMapped(this->w_cmdList->cmdList, resource->w_view);
 	}
 
@@ -3787,20 +3788,23 @@ namespace dx4xb {
 
 		IDXGISwapChain1* tmpSwapChain;
 
-		factory->CreateSwapChainForHwnd(
-			scheduler->Engines[0].queue->dxQueue,        // Swap chain needs the queue so that it can force a flush on it.
-			desc.hWnd,
-			&swapChainDesc,
-			&fullScreenDesc,
-			nullptr,
-			&tmpSwapChain
-		);
+		if (desc.hWnd != 0) // Window is used
+		{
+			factory->CreateSwapChainForHwnd(
+				scheduler->Engines[0].queue->dxQueue,        // Swap chain needs the queue so that it can force a flush on it.
+				desc.hWnd,
+				&swapChainDesc,
+				&fullScreenDesc,
+				nullptr,
+				&tmpSwapChain
+			);
 
-		this->swapChain = (IDXGISwapChain3*)tmpSwapChain;
-		this->swapChain->SetMaximumFrameLatency(swapChainDesc.BufferCount);
+			this->swapChain = (IDXGISwapChain3*)tmpSwapChain;
+			this->swapChain->SetMaximumFrameLatency(swapChainDesc.BufferCount);
 
-		// This sample does not support fullscreen transitions.
-		factory->MakeWindowAssociation(desc.hWnd, DXGI_MWA_NO_ALT_ENTER);
+			// This sample does not support fullscreen transitions.
+			factory->MakeWindowAssociation(desc.hWnd, DXGI_MWA_NO_ALT_ENTER);
+		}
 
 		// Initialize descriptor heaps
 
@@ -3816,18 +3820,34 @@ namespace dx4xb {
 
 		// Create rendertargets resources.
 		{
-			RenderTargets = new gObj<Texture2D>[swapChainDesc.BufferCount];
-			RenderTargetsRTV = new D3D12_CPU_DESCRIPTOR_HANDLE[swapChainDesc.BufferCount];
+			RenderTargets = new gObj<Texture2D>[desc.Frames];
+			RenderTargetsRTV = new D3D12_CPU_DESCRIPTOR_HANDLE[desc.Frames];
 			// Create a RTV and a command allocator for each frame.
-			for (UINT n = 0; n < swapChainDesc.BufferCount; n++)
+			for (UINT n = 0; n < desc.Frames; n++)
 			{
 				DX_Resource rtResource;
-				swapChain->GetBuffer(n, IID_PPV_ARGS(&rtResource));
-
+				if (desc.hWnd == 0) // create rts
+				{
+					D3D12_RESOURCE_DESC rd = {};
+					rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+					rd.Width = desc.ResolutionWidth;
+					rd.Height = desc.ResolutionHeight;
+					rd.DepthOrArraySize = 1;
+					rd.MipLevels = 1;
+					rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+					rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+					rd.SampleDesc.Count = 1;
+					rd.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+					D3D12_HEAP_PROPERTIES heap = {};
+					heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+					device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_RENDER_TARGET, nullptr, IID_PPV_ARGS(&rtResource));
+				}
+				else {
+					swapChain->GetBuffer(n, IID_PPV_ARGS(&rtResource));
+				}
+				wResource* rw;
 				auto desc = rtResource->GetDesc();
-
-				wResource* rw = new wResource(this->device, rtResource, desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST, CPUAccessibility::None);
-
+				rw = new wResource(this->device, rtResource, desc, 0, 0, D3D12_RESOURCE_STATE_COPY_DEST, CPUAccessibility::None);
 				RenderTargets[n] = new Texture2D(this, rw, nullptr);
 				RenderTargetsRTV[n] = RenderTargets[n]->w_view->getRTVHandle();
 			}
@@ -4270,14 +4290,17 @@ namespace dx4xb {
 		
 		device->scheduler->FinishFrame();
 
-		auto hr = device->swapChain->Present(0, 0);
+		if (device->swapChain != nullptr) {
+			auto hr = device->swapChain->Present(0, 0);
 
-		if (hr != S_OK) {
-			HRESULT r = device->device->GetDeviceRemovedReason();
-			throw Exception::FromError(Errors::Any, nullptr, r);
+			if (hr != S_OK) {
+				HRESULT r = device->device->GetDeviceRemovedReason();
+				throw Exception::FromError(Errors::Any, nullptr, r);
+			}
+
 		}
 
-		device->scheduler->SetupFrame(device->swapChain->GetCurrentBackBufferIndex());
+		device->scheduler->SetupFrame(device->swapChain == nullptr ? 0 : device->swapChain->GetCurrentBackBufferIndex());
 	}
 
 	Presenter::~Presenter() {

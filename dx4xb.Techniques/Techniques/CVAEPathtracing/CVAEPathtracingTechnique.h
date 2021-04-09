@@ -9,7 +9,8 @@ public:
 
 	struct CVAEPathtracing : public STPathtracingPipeline {
 		virtual const char* ShaderFile() {
-			return "./Techniques/CVAEPathtracing/CVAEPathtracing_RT.cso";
+			//return "./Techniques/CVAEPathtracing/CVAEPathtracing_RT.cso";
+			return "./Techniques/CVAEPathtracing/CVAEST_RT.cso";
 		}
 	};
 

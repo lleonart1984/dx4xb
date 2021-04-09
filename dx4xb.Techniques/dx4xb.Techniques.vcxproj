@@ -163,6 +163,7 @@
     <ClInclude Include="Techniques\CVAEPathtracing\CVAEPathtracingTechnique.h" />
     <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModel.h" />
     <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModelX.h" />
+    <ClInclude Include="Techniques\CVAEPathtracing\MultiscatteringModels.h" />
     <ClInclude Include="Techniques\CVAEPathtracing\NEECVAEPathtracingTechnique.h" />
     <ClInclude Include="Techniques\CVAEPathtracing\SphereTracingBase.h" />
     <ClInclude Include="Techniques\CVAEPathtracing\STBase_RT.h" />
@@ -209,6 +210,20 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </FxCompile>
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEST_RT.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">6.3</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+      </EntryPointName>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
     </FxCompile>
     <FxCompile Include="Techniques\CVAEPathtracing\DebugDF_CS.hlsl">
       <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>

@@ -669,7 +669,7 @@ namespace dx4xb {
 		void setGlassMaterial(int index, float alpha, float refractionIndex) {
 			SceneMaterial& material = scene->Materials().Data[index];
 
-			material.RefractionIndex = refractionIndex;
+			material.RefractionIndex = lerp(material.RefractionIndex, refractionIndex, alpha);
 			material.Specular = lerp(material.Specular, float3(1, 1, 1), alpha);
 			material.Roulette = lerp(material.Roulette, float4(0, 0, 0, 1), alpha);
 		}
@@ -677,7 +677,7 @@ namespace dx4xb {
 		void setMirrorMaterial(int index, float alpha) {
 			SceneMaterial& material = scene->Materials().Data[index];
 
-			material.Specular = lerp(material.Specular, float3(1, 1, 1), alpha);
+			material.Specular = lerp(material.Specular, float3(1, 1, 1), 1);
 			material.Roulette = lerp(material.Roulette, float4(0, 0, 1, 0), alpha);
 		}
 
