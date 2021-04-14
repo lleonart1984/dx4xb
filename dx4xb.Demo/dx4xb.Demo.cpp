@@ -23,8 +23,7 @@
 using namespace dx4xb;
 
 #define USE_GUI
-//#define SAVE_STATS
-//#define OFFLINE
+#define SAVE_STATS
 
 #ifdef USE_GUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -86,7 +85,6 @@ public:
 		TextureToSave->Read(data);
 		fwrite((void*)data, 1, dataSize, writting);
 		fclose(writting);
-		delete[] data;
 	}
 };
 
@@ -244,15 +242,7 @@ int main(int, char**)
 
 	// Create the presenter object
 	PresenterDescription pDesc;
-#ifdef OFFLINE
-	pDesc.Frames = 1;
-#else
-	pDesc.hWnd = hwnd; // Comment to have an offscreen renderer
-	pDesc.Frames = 2;
-#endif
-	pDesc.ResolutionWidth = ClientWidth;
-	pDesc.ResolutionHeight = ClientHeight;
-	pDesc.UseBuffering = false;
+	pDesc.hWnd = hwnd;
 	gObj<Presenter> presenter = Presenter::Create(pDesc);
 	InternalDXInfo dxObjects;
 	presenter->GetInternalDXInfo(dxObjects); // Get internal DX objects for ImGui management.
@@ -306,7 +296,6 @@ int main(int, char**)
 	//gObj<SceneManager> scene = new BuddhaScene();
 	//gObj<SceneManager> scene = new LucyAndDrago3();
 	gObj<SceneManager> scene = new CloudScene();
-	//gObj<SceneManager> scene = new BunnySceneForPT();
 	//gObj<SceneManager> scene = new BunnyScene();
 	//gObj<SceneManager> scene = new BunnyCornellScene();
 	//gObj<SceneManager> scene = new Sponza();
@@ -319,17 +308,7 @@ int main(int, char**)
 
 	presenter->Load(takingScreenshot);
 	presenter->Load(savingStats);
-
-	int animationFrame = 0;
-	int totalAnimatedFrames = 40;
 	
-	//scene->Animate(animationFrame / (float)totalAnimatedFrames, animationFrame);
-	char timeNumber[100];
-	
-	long startTickcount = GetCurrentTime();
-	_itoa_s(GetCurrentTime() - startTickcount, timeNumber, 10);
-	std::cout << timeNumber << std::endl;
-
 	// Main graphics loop
 	MSG msg;
 	ZeroMemory(&msg, sizeof(msg));
@@ -415,20 +394,12 @@ int main(int, char**)
 			int frames;
 			asStatistics->getAccumulators(sumTexture, sqrSumTexture, frames);
 
-			//if (frames >= (1 << 11))
-			if (frames >= (1 << 4))
-				if ((frames & (frames - 1)) == 0) // power of 2
+			if (frames >= (1 << 16))
+				//if ((frames & (frames - 1)) == 0) // power of 2
 				{
-					long span = GetCurrentTime() - startTickcount;
-					_itoa_s(span, timeNumber, 10);
-					std::cout << timeNumber << std::endl;
-
-					std::cout << "Left: " << (span * (totalAnimatedFrames - animationFrame - 1) / (animationFrame + 1)) << std::endl;
-
 					char number[100];
 					_itoa_s(frames, number, 10);
-					//_itoa_s(animationFrame, number, 10);
-					dx4xb::string fileName = "./Teaser/save_";
+					dx4xb::string fileName = "save_";
 					fileName = fileName + dx4xb::string(number);
 
 					takingScreenshot->FileName = fileName + dx4xb::string(".png");
@@ -441,15 +412,8 @@ int main(int, char**)
 					savingStats->FileName = fileName + dx4xb::string("_sqrSum.bin");
 					savingStats->TextureToSave = sqrSumTexture;
 					presenter->ExecuteTechnique(savingStats); // saving sqr sum
-					
-					//animationFrame++;
-					//scene->Animate(animationFrame / (float)totalAnimatedFrames, animationFrame);
-					//std::cout << fileName.c_str() << std::endl;
 
-					//if (animationFrame >= totalAnimatedFrames)
-					//{
-					//	break; // finish animations
-					//}
+					break;
 				}
 		}
 #endif
@@ -460,7 +424,7 @@ int main(int, char**)
 		// Just in case the technique leave it in other state
 		//presenter _dispatch RenderTarget();
 
-		auto renderTargetHandle = dxObjects.RenderTargets[dxObjects.swapChain == nullptr ? 0 : dxObjects.swapChain->GetCurrentBackBufferIndex()];
+		auto renderTargetHandle = dxObjects.RenderTargets[dxObjects.swapChain->GetCurrentBackBufferIndex()];
 		dxObjects.mainCmdList->OMSetRenderTargets(1, &renderTargetHandle, false, nullptr);
 		ID3D12DescriptorHeap* dh[1] = { guiDescriptors };
 		dxObjects.mainCmdList->SetDescriptorHeaps(1, dh);

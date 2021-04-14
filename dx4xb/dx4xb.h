@@ -4680,7 +4680,7 @@ namespace dx4xb {
 			gObj<T> obj;
 			obj._this = _this ? dynamic_cast<T*>(_this) : nullptr;
 			obj.counter = counter;
-			if (obj._this)
+			if (_this)
 				obj.AddReference();
 			return obj;
 		}
