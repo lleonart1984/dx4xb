@@ -326,8 +326,34 @@ float3 PathtraceWithNEE(float3 x, float3 w, out int counter)
 	}
 }
 
+float3 SingleScattering(float3 x, float3 w, out int counter)
+{
+	counter = 0;
+
+	float3 importance = 0;
+	importance[NumberOfPasses % 3] = 3;
+
+	float3 result = 0;
+
+	if (!TraverseVolume(x, w, counter))
+		return result + importance * SampleSkybox(w);
+
+	if (random() >= ScatteringAlbedo[NumberOfPasses % 3])
+		return result; // absorption
+
+	float3 testX = x;
+	result += (!TraverseVolume(testX, LightDirection, counter)) * importance * LightIntensity * EvalPhase(G[NumberOfPasses % 3], w, LightDirection);
+	w = ImportanceSamplePhase(G[NumberOfPasses % 3], w); // scattering event...
+
+	if (!TraverseVolume(x, w, counter))
+		return result + importance * SampleSkybox(w);
+
+	return result;
+}
+
 float3 Pathtrace(float3 x, float3 w, out int counter)
 {
+	//return SingleScattering(x, w, counter);
 	//return PathtraceWithNEE(x, w, counter);
 	//return PathtraceWithoutNEE(x, w, counter);
 	return PathtraceWithSTSlow(x, w, counter);
