@@ -49,6 +49,7 @@ public:
 			set->VertexShader(ShaderLoader::FromFile("./Techniques/Examples/Basic_VS.cso"));
 			set->PixelShader(ShaderLoader::FromFile("./Techniques/Examples/Basic_PS.cso"));
 			set->InputLayout(SceneVertex::Layout());
+			//set->FillMode(D3D12_FILL_MODE_WIREFRAME);
 			set->DepthTest();
 		}
 
@@ -177,6 +178,7 @@ public:
 		manager->SetPipeline(pipeline);
 		manager->Viewport(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 
+		//manager->ClearRenderTarget(CurrentRenderTarget(), float4(0, 0, 0, 1));
 		manager->ClearRenderTarget(CurrentRenderTarget(), float3(0.2f, 0.2f, 0.5f));
 		manager->ClearDepth(pipeline->DepthBuffer);
 		manager->IndexBuffer(IndexBuffer);

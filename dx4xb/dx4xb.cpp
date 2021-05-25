@@ -4097,10 +4097,17 @@ namespace dx4xb {
 	}
 
 	float3 outsideData = float3(0, 0, 0);
+	float4 outsideData4 = float4(0, 0, 0, 0);
 
 	float3* sampleData(float3* data, int x, int y, int z, int width, int height, int slices) {
 		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= slices)
 			return &outsideData;
+		return &data[z * (height * width) + y * width + x];
+	}
+
+	float4* sampleData(float4* data, int x, int y, int z, int width, int height, int slices) {
+		if (x < 0 || y < 0 || z < 0 || x >= width || y >= height || z >= slices)
+			return &outsideData4;
 		return &data[z * (height * width) + y * width + x];
 	}
 
@@ -4175,7 +4182,8 @@ namespace dx4xb {
 						for (int dy = -1; dy <= 1; dy++)
 							for (int dx = -1; dx <= 1; dx++)
 							{
-								float smp = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x * 0.5 + center * 0.5;
+								float smp = sampleData(data, x + dx, y + dy, z + dz, pWidth, pHeight, pSlices)->x * 0.5 + center * 0.5;
+								//float smp = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x * 0.5 + center * 0.5;
 								maxim = maxf(maxim, smp);
 								minim = minf(minim, smp);
 							}
@@ -4188,7 +4196,7 @@ namespace dx4xb {
 		int nSlices = pSlices;
 		int offset = 0;
 		// Compute Mip Maps of x: sum, y: mins, z: maxs
-		for (int mip = 0; mip < mips; mip++) {
+		for (int mip = 0; mip < mips - 1; mip++) {
 			int nextOffset = offset + nWidth * nHeight * nSlices;
 			for (int z = 0; z < nSlices; z++)
 				for (int y = 0; y < nHeight; y++)
@@ -4207,6 +4215,121 @@ namespace dx4xb {
 		}
 
 		gObj<Texture3D> result = CreateTexture3DSRV<float3>(pWidth, pHeight, pSlices, mips);
+		result->Write((byte*)data, false);
+
+		delete[] xorderData;
+
+		delete[] data;
+		return result;
+	}
+
+	gObj<Texture3D> dx4xb::DeviceManager::LoadTexture3DVarMipMap(dx4xb::string filePath)
+	{
+		FILE* f;
+		if (fopen_s(&f, filePath.c_str(), "r"))
+			throw Exception::FromError(Errors::Invalid_Operation, "Grid file not found");
+
+		int width, height, slices;
+		double vx, vy, vz;
+		fread_s(&width, 4, 4, 1, f);
+		fread_s(&height, 4, 4, 1, f);
+		fread_s(&slices, 4, 4, 1, f);
+		fread_s(&vx, 8, 8, 1, f);
+		fread_s(&vy, 8, 8, 1, f);
+		fread_s(&vz, 8, 8, 1, f);
+		float* xorderData = new float[width * height * slices];
+		fread_s(xorderData, width * height * slices * 4, 4, width * height * slices, f);
+		fclose(f);
+
+		int pWidth = greaterPow2(width);
+		int pHeight = greaterPow2(height);
+		int pSlices = greaterPow2(slices);
+
+		int p = 0;
+
+		int mipWidth = pWidth;
+		int mipHeight = pHeight;
+		int mipSlices = pSlices;
+
+		// Compute Mip Maps memory.
+		int mips = 0;
+		while (mipWidth > 0 && mipHeight > 0 && mipSlices > 0) {
+			p += mipWidth * mipHeight * mipSlices;
+			mips++;
+			mipWidth /= 2;
+			mipHeight /= 2;
+			mipSlices /= 2;
+		}
+
+		// Allocate memory
+		float4* data = new float4[p];
+		for (int i = 0; i < p; i++)
+			data[i] = float4(0, 0, 1, 0); // default value ave and var 0, min value in 1 to be minimized, max value in 0 to be maximized
+
+		// Compute densities
+		float maxValue = 0;
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+				{
+					float d = xorderData[x * height * slices + y * slices + z];
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x = max(0, d);
+					maxValue = max(maxValue, d);
+				}
+		// Normalize densities 0..1
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+				{
+					float value = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x / maxValue;
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x = value;// == 1 ? 1.0f : 0.0f;
+				}
+		// Compute sqrSum, max and min
+		for (int z = 0; z < pSlices; z++)
+			for (int y = 0; y < pHeight; y++)
+				for (int x = 0; x < pWidth; x++)
+				{
+					float center = sampleData(data, x, y, z, pWidth, pHeight, pSlices)->x;
+					float maxim = center;
+					float minim = center;
+					for (int dz = -1; dz <= 1; dz++)
+						for (int dy = -1; dy <= 1; dy++)
+							for (int dx = -1; dx <= 1; dx++)
+							{
+								float smp = sampleData(data, x + dx, y + dy, z + dz, pWidth, pHeight, pSlices)->x * 0.5 + center * 0.5;
+								maxim = maxf(maxim, smp);
+								minim = minf(minim, smp);
+							}
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->y = center*center;
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->z = minim;
+					sampleData(data, x, y, z, pWidth, pHeight, pSlices)->w = maxim;
+				}
+
+		int nWidth = pWidth;
+		int nHeight = pHeight;
+		int nSlices = pSlices;
+		int offset = 0;
+		// Compute Mip Maps of x: sum, y: mins, z: maxs
+		for (int mip = 0; mip < mips - 1; mip++) {
+			int nextOffset = offset + nWidth * nHeight * nSlices;
+			for (int z = 0; z < nSlices; z++)
+				for (int y = 0; y < nHeight; y++)
+					for (int x = 0; x < nWidth; x++)
+					{
+						float4* nextData = sampleData(data + nextOffset, x / 2, y / 2, z / 2, nWidth / 2, nHeight / 2, nSlices / 2);
+						float4* currentData = sampleData(data + offset, x, y, z, nWidth, nHeight, nSlices);
+						nextData->x += currentData->x / 8.0f;
+						nextData->y += currentData->y / 8.0f;
+						nextData->z = min(nextData->z, currentData->z);
+						nextData->w = max(nextData->w, currentData->w);
+					}
+			offset = nextOffset;
+			nWidth /= 2;
+			nHeight /= 2;
+			nSlices /= 2;
+		}
+
+		gObj<Texture3D> result = CreateTexture3DSRV<float4>(pWidth, pHeight, pSlices, mips);
 		result->Write((byte*)data, false);
 
 		delete[] xorderData;

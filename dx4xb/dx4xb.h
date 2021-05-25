@@ -16188,6 +16188,8 @@ namespace dx4xb {
 		gObj<Texture3D> LoadTexture3D(dx4xb::string filePath);
 
 		gObj<Texture3D> LoadTexture3DMipMap(dx4xb::string filePath);
+		
+		gObj<Texture3D> LoadTexture3DVarMipMap(dx4xb::string filePath);
 
 		/// <summary>
 		///	Saves the content of a texture to a file.

@@ -2,7 +2,7 @@
 
 #include "..\Tools\Definitions.h"
 
-Texture3D<float3> Grid : register(t0, space0); // Grid used in this pathtracer (value, totalSum, totalSqrSum)
+Texture3D<float4> Grid	: register(t0, space0); // Grid used in this pathtracer (value, average, radii)
 
 sampler VolSampler : register(s0);
 
@@ -15,6 +15,7 @@ cbuffer AccumulativeInfo : register(b1) {
 	uint NumberOfPasses;
 	uint ShowComplexity;
 	float PathtracingRatio;
+	uint AnimatedFrame;
 }
 
 cbuffer VolumeMaterial : register(b2) {
@@ -68,7 +69,7 @@ bool BoxIntersect(float3 bMin, float3 bMax, float3 P, float3 D, inout float tMin
 	tMin = max(max(min(T._m00, T._m10), min(T._m01, T._m11)), min(T._m02, T._m12));
 	tMin = max(0.0, tMin);
 	tMax = min(min(max(T._m00, T._m10), max(T._m01, T._m11)), max(T._m02, T._m12));
-	if (tMax < tMin || tMax < 0) {
+	if (tMax <= tMin || tMax <= 0) {
 		return false;
 	}
 	return true;
@@ -78,31 +79,7 @@ float SampleGrid(float3 P) {
 	float3 minim, maxim;
 	GetGridBox(minim, maxim);
 	float3 coordinate = (P - minim) / (maxim - minim);
-	return Grid.SampleGrad(VolSampler, coordinate, 0, 0);
-}
-
-float2 SampleStatistics(float3 P, float r, float3 minim, float3 maxim)
-{
-	int w, h, d;
-	Grid.GetDimensions(w, h, d);
-	float3 cellCorrection = 0.5f / float3(w, h, d);
-
-	float3 a = max(minim, P - r + cellCorrection);
-	float3 b = min(maxim, P + r + cellCorrection);
-
-	float3 cmin = (a - minim) / (maxim - minim);
-	float3 cmax = (b - minim) / (maxim - minim);
-
-	float2 samp000 = Grid.SampleGrad(VolSampler, float3(cmin.x, cmin.y, cmin.z), 0, 0, 0).yz;
-	float2 samp001 = Grid.SampleGrad(VolSampler, float3(cmin.x, cmin.y, cmax.z), 0, 0, 0).yz;
-	float2 samp010 = Grid.SampleGrad(VolSampler, float3(cmin.x, cmax.y, cmin.z), 0, 0, 0).yz;
-	float2 samp011 = Grid.SampleGrad(VolSampler, float3(cmin.x, cmax.y, cmax.z), 0, 0, 0).yz;
-	float2 samp100 = Grid.SampleGrad(VolSampler, float3(cmax.x, cmin.y, cmin.z), 0, 0, 0).yz;
-	float2 samp101 = Grid.SampleGrad(VolSampler, float3(cmax.x, cmin.y, cmax.z), 0, 0, 0).yz;
-	float2 samp110 = Grid.SampleGrad(VolSampler, float3(cmax.x, cmax.y, cmin.z), 0, 0, 0).yz;
-	float2 samp111 = Grid.SampleGrad(VolSampler, float3(cmax.x, cmax.y, cmax.z), 0, 0, 0).yz;
-
-	return (samp111 - samp110 - samp101 - samp011 + samp100 + samp010 + samp001 - samp000);// / ((cmax.x - cmin.x) * (cmax.y - cmin.y) * (cmax.z - cmin.z));
+	return Grid.SampleGrad(VolSampler, coordinate, 0, 0).x;
 }
 
 float3 Pathtrace(float3 x, float3 w, out int counter);
@@ -113,7 +90,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	uint2 dim;
 	Output.GetDimensions(dim.x, dim.y);
 
-	StartRandomSeedForRay(dim, 1, DTid.xy, 0, NumberOfPasses);
+	StartRandomSeedForRay(dim, 1, DTid.xy, 0, NumberOfPasses + (AnimatedFrame ^ 37) * 1000000);
 
 	float4 ndcP = float4(2 * (DTid.xy + 0.5) / dim - 1, 0, 1);
 	ndcP.y *= -1;

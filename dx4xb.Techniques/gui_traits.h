@@ -16,3 +16,8 @@ struct IManageScene {
 struct IGatherImageStatistics {
 	virtual void getAccumulators(gObj<Texture2D>& sum, gObj<Texture2D>& sqrSum, int& frames) = 0;
 };
+
+struct VISInfo {
+	float Slice;
+	bool ShowComplexity;
+};

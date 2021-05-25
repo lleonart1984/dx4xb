@@ -70,8 +70,8 @@ bool GenerateVariablesWithModel(float G, float Phi, float3 win, float density, o
 	lenModel(lenInput, lenOutput);
 
 	float logN = max(0, sampleNormal(lenOutput[0], lenOutput[1]));
-	float n = round(exp(logN));
-	logN = log(n);
+	float n = exp(logN);// round(exp(logN) + 0.49);
+	//logN = log(n);
 
 	counter += n;
 
@@ -95,11 +95,11 @@ bool GenerateVariablesWithModel(float G, float Phi, float3 win, float density, o
 	float3 sampling = randomStdNormal3();
 	float3 pathMu = float3(pathOutput[0], pathOutput[1], pathOutput[2]);
 	float3 pathLogVar = float3(pathOutput[3], pathOutput[4], pathOutput[5]);
-	float3 pathOut = clamp(pathMu + exp(clamp(pathLogVar, -16, 16) * 0.5) * sampling, -0.9999, 0.9999);
+	float3 pathOut = clamp(pathMu + exp(clamp(pathLogVar, -16, 16) * 0.5) * sampling, -0.99999, 0.99999);
 	float costheta = pathOut.x;
 
 	float wt = pathOut.y;
-	float wb = n > 1 ? pathOut.z : 0.0; // only if n >= 2 the alpha is different of 0
+	float wb = pathOut.z;// n >= 2 ? pathOut.z : 0.0; // only if n >= 2 the alpha is different of 0
 
 	//float wt = pathOut.y; 
 	//float wb = pathOut.z;
@@ -162,15 +162,11 @@ bool TraverseVolume(inout float3 x, float3 w, inout int counter) {
 		d -= t;
 
 		float3 tSamplePosition = (x - bMin) / (bMax - bMin);
-		//counter++;
-		float3 probExt = Grid.SampleLevel(VolSampler, tSamplePosition, 0);
+		
+		float probExt = Grid.SampleLevel(VolSampler, tSamplePosition, 0).x;
+		counter++;
 
-		/*float r = 0.01;
-		float2 stats = SampleStatistics(x, r, bMin, bMax);
-		float probExt = stats.x; // use mean instead*/
-
-		//if (random() < (probExt.z - probExt.y))
-		if (random() < probExt.x)
+		if (random() < probExt)
 			return true;
 	}
 }
@@ -178,7 +174,7 @@ bool TraverseVolume(inout float3 x, float3 w, inout int counter) {
 
 float3 PathtraceWithoutNEE(float3 x, float3 w, out int counter)
 {
-	counter = 1;
+	counter = 0;
 
 	float3 importance = 0;
 	importance[NumberOfPasses % 3] = 3;
@@ -190,58 +186,9 @@ float3 PathtraceWithoutNEE(float3 x, float3 w, out int counter)
 
 		if (random() >= ScatteringAlbedo[NumberOfPasses % 3])
 			return 0; // absorption
+
 		w = ImportanceSamplePhase(G[NumberOfPasses % 3], w); // scattering event...
-		counter++;
 	}
-}
-
-float3 PathtraceWithST(float3 x, float3 w, out int counter)
-{
-	counter = 0;
-
-	float3 importance = 0;
-	importance[NumberOfPasses % 3] = 3;
-
-	float3 bMin, bMax;
-	GetGridBox(bMin, bMax);
-
-	int width, height, depth;
-	Grid.GetDimensions(width, height, depth);
-	float maxDim = max(width, max(height, depth));
-
-	int level = 0;
-
-	while (true) {
-
-		float tMin, tMax;
-		if (!BoxIntersect(bMin, bMax, x, w, tMin, tMax))
-			return importance * (SampleSkybox(w) + SampleLight(w));
-
-		x += w * tMin; // move free to box border if outside...
-
-		//  Choose level and ratio
-		float3 tSamplePosition = (x - bMin) / (bMax - bMin);
-		float3 smp = Grid.SampleLevel(VolSampler, tSamplePosition, level);
-		counter++;
-		float r = 0.5*(1 << level) / maxDim;
-
-		float3 xs;
-		if (!TraverseUnitarySphere(xs, w, r * smp.x * Extinction[NumberOfPasses % 3], G[NumberOfPasses % 3], ScatteringAlbedo[NumberOfPasses % 3], counter))
-			return 0; // absorption
-		x += xs * r;
-
-		level = (smp.z - smp.y) <= smp.z * 0.001 ? min(6, level + 1) : max(0, level - 1);
-	}
-}
-
-bool CanBeTreatedAsHomogeneous(float3 gridValue, int numberOfScatters) {
-	float max = gridValue.z;
-	float min = gridValue.y;
-	float ave = gridValue.x;
-
-	//return (max - ave) <= 0.0; // skip only really homogeneous space
-	//return false; // no skip
-	return (max - ave) <= max * (0.2);
 }
 
 float3 PathtraceWithSTSlow(float3 x, float3 w, out int counter)
@@ -258,7 +205,6 @@ float3 PathtraceWithSTSlow(float3 x, float3 w, out int counter)
 	Grid.GetDimensions(width, height, depth);
 	float maxDim = max(width, max(height, depth));
 	int numberOfScatters = 1;
-	int startLevel = 9;
 	while (true) {
 
 		float tMin, tMax;
@@ -267,32 +213,27 @@ float3 PathtraceWithSTSlow(float3 x, float3 w, out int counter)
 
 		x += w * tMin; // move free to box border if outside...
 
-		float r, ratio;
-		{ //  Choose level and ratio
-			float3 tSamplePosition = (x - bMin) / (bMax - bMin);
-			int mipLevel = startLevel;
-			float3 smp = float3(0, 0, 1);
-			while (mipLevel >= 0 && !CanBeTreatedAsHomogeneous(smp, numberOfScatters))
-			{
-				//counter++;
-				smp = Grid.SampleLevel(VolSampler, tSamplePosition, mipLevel);
-				mipLevel--;
-			}
+		float3 tSamplePosition = (x - bMin) / (bMax - bMin);
 
-			int levelInc = 2;// 1 + (smp.z - smp.x <= 0.1 * smp.z);// +(smp.z - smp.y < 0.2);
-
-			startLevel = min(9, mipLevel + levelInc);
-
-			ratio = smp.x;
-			r = 0.5*(1 << (mipLevel + 1)) / maxDim;
-		}
-
-		//numberOfScatters++;
+		float3 smp = Grid.SampleLevel(VolSampler, tSamplePosition, 0);
+		
+		float ratio = smp.y;
+		float r = pow(2, smp.z) / maxDim;
 
 		float3 xs;
-		if (!EvalTraverseUnitarySphere(xs, w, ratio * Extinction[NumberOfPasses % 3] * r, G[NumberOfPasses % 3], ScatteringAlbedo[NumberOfPasses % 3], numberOfScatters))
-		//if (!TraverseUnitarySphere(xs, w, ratio * Extinction[NumberOfPasses % 3] * r, G[NumberOfPasses % 3], ScatteringAlbedo[NumberOfPasses % 3], numberOfScatters))
+
+		float normDensity = ratio * Extinction[NumberOfPasses % 3] * r;
+
+		bool survival;
+
+		//if (normDensity > 1)
+			survival = EvalTraverseUnitarySphere(xs, w, normDensity, G[NumberOfPasses % 3], ScatteringAlbedo[NumberOfPasses % 3], numberOfScatters);
+		//else
+		//	survival = TraverseUnitarySphere(xs, w, ratio * Extinction[NumberOfPasses % 3] * r, G[NumberOfPasses % 3], ScatteringAlbedo[NumberOfPasses % 3], numberOfScatters);
+			
+		if (!survival)
 			return 0; // absorption
+
 		counter++;
 
 		x += xs * r;
@@ -355,6 +296,6 @@ float3 Pathtrace(float3 x, float3 w, out int counter)
 {
 	//return SingleScattering(x, w, counter);
 	//return PathtraceWithNEE(x, w, counter);
-	//return PathtraceWithoutNEE(x, w, counter);
-	return PathtraceWithSTSlow(x, w, counter);
+	return PathtraceWithoutNEE(x, w, counter);
+	//return PathtraceWithSTSlow(x, w, counter);
 }

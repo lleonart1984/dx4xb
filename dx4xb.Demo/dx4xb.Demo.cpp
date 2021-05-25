@@ -19,8 +19,10 @@
 #include "Techniques/CVAEPathtracing/STFTechnique.h"
 #include "Techniques/CVAEPathtracing/STFXTechnique.h"
 #include "Techniques/VolumeRendering/VPTTechnique.h"
+#include "Techniques/VolumeRendering/VPTRTTechnique.h"
 
 using namespace dx4xb;
+
 
 #define USE_GUI
 //#define SAVE_STATS
@@ -214,6 +216,11 @@ void GuiFor(gObj<IManageScene> t) {
 #pragma endregion
 }
 
+void GuiFor(gObj<VISInfo> t) {
+	ImGui::SliderFloat("Slice", &t->Slice, -1, 1);
+	ImGui::Checkbox("Show Complexity", &t->ShowComplexity);
+}
+
 template<typename T>
 void RenderGUI(gObj<Technique> t) {
 	gObj<T> h = t.Dynamic_Cast<T>();
@@ -290,7 +297,9 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<VPTTechnique> technique = new VPTTechnique();
+	//gObj<VPTTechnique> technique = new VPTTechnique();
+	gObj<VPTRTTechnique> technique = new VPTRTTechnique();
+	//gObj<VisTechnique> technique = new VisTechnique();
 	//gObj<BasicSceneTechnique> technique = new BasicSceneTechnique();
 	//gObj<BasicRaycastSample> technique = new BasicRaycastSample();
 	//gObj<PathtracingTechnique> technique = new PathtracingTechnique();
@@ -356,6 +365,7 @@ int main(int, char**)
 			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
 			RenderGUI<IManageScene>(technique);
+			RenderGUI<VISInfo>(technique);
 
 			ImGui::End();
 
@@ -428,7 +438,7 @@ int main(int, char**)
 					char number[100];
 					_itoa_s(frames, number, 10);
 					//_itoa_s(animationFrame, number, 10);
-					dx4xb::string fileName = "./Teaser/save_";
+					dx4xb::string fileName = "./Cloud/save_";
 					fileName = fileName + dx4xb::string(number);
 
 					takingScreenshot->FileName = fileName + dx4xb::string(".png");
@@ -450,7 +460,15 @@ int main(int, char**)
 					//{
 					//	break; // finish animations
 					//}
+
+					break;
 				}
+		}
+		else {
+			dx4xb::string fileName = "./Cloud/savedRT";
+			takingScreenshot->FileName = fileName + dx4xb::string(".png");
+			presenter->ExecuteTechnique(takingScreenshot);
+			break;
 		}
 #endif
 

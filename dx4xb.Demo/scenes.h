@@ -1224,11 +1224,12 @@ public:
 		auto plateScene = OBJLoader::Load(platePath);
 		scene->appendScene(plateScene);
 
-		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
+		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
+		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1940.xyz");
 		int gridIndex = scene->appendGrid(gridPath);
 		scene->appendMaterial(SceneMaterial());
 		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
-				float3(600, 600, 600)*1, // sigma
+				float3(1000, 1000, 1000)*1, // sigma
 				float3(1, 1, 1),
 				float3(0.875, 0.875, 0.875)
 			});
@@ -1534,8 +1535,8 @@ public:
 
 	void SetupScene() {
 
-		camera.Position = float3(0.3f, 0.05f, -0.028);
-		camera.Target = float3(0, 0.07f, 0);
+		camera.Position = float3(0.3f, 0.01f, -0.02);
+		camera.Target = float3(0.2f, 0.04f, 0);
 
 		lights[0].Direction = normalize(float3(0, 1, 0));
 		lights[0].Intensity = float3(6, 6, 6)*4;
