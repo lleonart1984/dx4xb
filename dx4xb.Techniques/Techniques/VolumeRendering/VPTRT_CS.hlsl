@@ -50,6 +50,7 @@ float3 DTPathtrace(float3 x, float3 w, out int counter) {
 		if (xi < Pa) // absorption
 			return 0;
 
+
 		if (xi < 1 - Pn) // scattering
 		{
 			w = ImportanceSamplePhase(G[NumberOfPasses % 3], w); // scattering event...
