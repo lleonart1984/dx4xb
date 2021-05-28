@@ -718,7 +718,7 @@ namespace dx4xb {
 				currentVersion.Upgrade(SceneElement::Materials);
 			if (this->scene->getTransformsBuffer().Count > 0)
 				currentVersion.Upgrade(SceneElement::GeometryTransforms);
-			if (this->scene->getTextures().Count > 0)
+			if (this->scene->getTextures().Count > 0 || this->scene->getGrids().Count > 0)
 				currentVersion.Upgrade(SceneElement::Textures);
 			if (this->scene->Geometries().Count > 0)
 				currentVersion.Upgrade(SceneElement::Geometries);
