@@ -1224,8 +1224,8 @@ public:
 		//auto plateScene = OBJLoader::Load(platePath);
 		//scene->appendScene(plateScene);
 
-		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
-		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1940.xyz");
+		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
+		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1940.xyz");
 		int gridIndex = scene->appendGrid(gridPath);
 		scene->appendMaterial(SceneMaterial());
 		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
