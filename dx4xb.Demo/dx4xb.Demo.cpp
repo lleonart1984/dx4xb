@@ -20,6 +20,9 @@
 #include "Techniques/CVAEPathtracing/STFXTechnique.h"
 #include "Techniques/VolumeRendering/VPTTechnique.h"
 #include "Techniques/VolumeRendering/VPTRTTechnique.h"
+#include "Techniques/VolumeRendering/PathVisTechnique.h"
+
+#include "Techniques/VolumePathtracing/VPT_Technique.h"
 
 using namespace dx4xb;
 
@@ -297,8 +300,10 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
+	gObj<VPT_Technique> technique = new VPT_Technique();
 	//gObj<VPTTechnique> technique = new VPTTechnique();
-	gObj<VPTRTTechnique> technique = new VPTRTTechnique();
+	//gObj<PathVisTechnique> technique = new PathVisTechnique();
+	//gObj<VPTRTTechnique> technique = new VPTRTTechnique();
 	//gObj<VisTechnique> technique = new VisTechnique();
 	//gObj<BasicSceneTechnique> technique = new BasicSceneTechnique();
 	//gObj<BasicRaycastSample> technique = new BasicRaycastSample();
@@ -314,7 +319,8 @@ int main(int, char**)
 
 	//gObj<SceneManager> scene = new BuddhaScene();
 	//gObj<SceneManager> scene = new LucyAndDrago3();
-	gObj<SceneManager> scene = new CloudScene();
+	//gObj<SceneManager> scene = new CloudScene();
+	gObj<SceneManager> scene = new DisneyCloudScene();
 	//gObj<SceneManager> scene = new BunnySceneForPT();
 	//gObj<SceneManager> scene = new BunnyScene();
 	//gObj<SceneManager> scene = new BunnyCornellScene();
@@ -461,7 +467,7 @@ int main(int, char**)
 					//	break; // finish animations
 					//}
 
-					break;
+					//break;
 				}
 		}
 		else {

@@ -24,5 +24,5 @@ void AccumulateOutput(uint2 coord, float3 value, int complexity) {
 	if (ShowComplexity)
 		Output[coord] = float4(GetColor((int)round(Complexity[coord] / (NumberOfPasses + 1))), 1);
 	else
-		Output[coord] = float4(Accumulation[coord] / (NumberOfPasses + 1), 1);
+		Output[coord] = float4(sqrt(Accumulation[coord] / (NumberOfPasses + 1)), 1);
 }

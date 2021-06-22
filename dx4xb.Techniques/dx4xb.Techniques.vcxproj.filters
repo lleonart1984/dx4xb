@@ -120,6 +120,48 @@
     <ClInclude Include="Techniques\VolumeRendering\VPTRTTechnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\Tools\MiePhase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\PathVisTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\PerlinNoise.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\Basic_Pathtrace.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\DT_Transmittance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\RT_Transmittance.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\ComputeMajorant.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\SuperVoxel_Pathtrace.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_DT_Strategy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_NoAcc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_Technique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_Base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_SVAcc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\ComputeMajorant.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -150,5 +192,11 @@
     <FxCompile Include="Techniques\VolumeRendering\VVis_CS.hlsl" />
     <FxCompile Include="Techniques\VolumeRendering\ComputeDeep_CS.hlsl" />
     <FxCompile Include="Techniques\VolumeRendering\VPTRT_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\GenScatters_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\ViewComplexity_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\ComputeMajorant_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\VPT_NoAcc_DT_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\ComputeMajorant_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\VPT_SV_DT_CS.hlsl" />
   </ItemGroup>
 </Project>

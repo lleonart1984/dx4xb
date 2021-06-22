@@ -16185,6 +16185,8 @@ namespace dx4xb {
 		/// </summary>
 		gObj<Texture2D> LoadTexture2D(dx4xb::string filePath);
 
+		gObj<Texture3D> LoadGrid(dx4xb::string filePath);
+
 		gObj<Texture3D> LoadTexture3D(dx4xb::string filePath);
 
 		gObj<Texture3D> LoadTexture3DMipMap(dx4xb::string filePath);

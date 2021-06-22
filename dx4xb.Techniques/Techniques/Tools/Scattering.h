@@ -22,6 +22,12 @@ float3 DiffuseBRDFMulTwoPi(float3 V, float3 L, float3 fN, float NdotL, Material 
 	return material.Diffuse * 2;
 }
 
+// Gets perfect lambertian normalized brdf ratio divided by a uniform distribution pdf value
+float3 DiffuseBRDFMulPi(float3 V, float3 L, float3 fN, float NdotL, Material material)
+{
+	return material.Diffuse;
+}
+
 // Gets perfect lambertian normalized brdf ratio
 float3 DiffuseBRDF(float3 V, float3 L, float3 fN, float NdotL, Material material) {
 	return material.Diffuse / pi;
@@ -35,20 +41,20 @@ float3 SpecularBRDFMulTwoPi(float3 V, float3 L, float3 fN, float NdotL, Material
 	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / pi;
 }
 
+// Gets blinn-model specular normalized brdf ratio divided by a uniform distribution pdf value
+float3 SpecularBRDFMulPi(float3 V, float3 L, float3 fN, float NdotL, Material material)
+{
+	float3 H = normalize(V + L);
+	float HdotN = max(0.0001, dot(H, fN));
+	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / two_pi;
+}
+
 // Gets blinn-model specular normalized brdf ratio
 float3 SpecularBRDF(float3 V, float3 L, float3 fN, float NdotL, Material material)
 {
 	float3 H = normalize(V + L);
 	float HdotN = max(0.0001, dot(H, fN));
 	return pow(HdotN, material.SpecularSharpness) * material.Specular * (2 + material.SpecularSharpness) / pi / two_pi;
-}
-
-
-float3 DirectContribution(float3 V, float3 L, float3 fN, float NdotL, Material material) {
-	return (
-			DiffuseBRDF(V, L, fN, NdotL, material) * material.Roulette.x +
-			SpecularBRDF(V, L, fN, NdotL, material) * material.Roulette.y
-			) * NdotL;
 }
 
 // Scatters a ray randomly using the material roulette information
@@ -61,14 +67,21 @@ void RandomScatterRay(float3 V, float3 fN, float4 R, float4 T, Material material
 	out float pdf
 ) {
 	float NdotD;
-	float3 D = randomHSDirection(fN, NdotD);
+	//float3 D = randomHSDirection(fN, NdotD);
+	//pdf = 1;
+	float3 D = randomHSDirectionCosineWeighted(fN, NdotD);
+	//pdf = 2 * NdotD;
 
-	float3 Diff = DiffuseBRDFMulTwoPi(V, D, fN, NdotD, material);
-	float3 Spec = SpecularBRDFMulTwoPi(V, D, fN, NdotD, material);
+	//float3 Diff = DiffuseBRDFMulTwoPi(V, D, fN, NdotD, material);
+	float3 Diff = DiffuseBRDFMulPi(V, D, fN, NdotD, material);
+	//float3 Spec = SpecularBRDFMulTwoPi(V, D, fN, NdotD, material);
+	float3 Spec = SpecularBRDFMulPi(V, D, fN, NdotD, material);
 
 	float4x3 ratios = {
-		Diff * NdotD, // Diffuse
-		Spec * NdotD, // Specular (Glossy)
+		//Diff * NdotD, // Diffuse
+		Diff, // Diffuse
+		//Spec * NdotD, // Specular (Glossy)
+		Spec, // Specular (Glossy)
 		material.Specular, // Mirror
 		material.Specular  // Fresnel
 	};
@@ -158,6 +171,14 @@ void ComputeImpulses(float3 V, Vertex surfel, Material material,
 	// Mix reflection impulse with mirror materials
 	R.w = material.Roulette.z + R.w * material.Roulette.w;
 	T.w *= material.Roulette.w;
+}
+
+
+float3 DirectContribution(float3 V, float3 L, float3 fN, float NdotL, Material material) {
+	return (
+		DiffuseBRDF(V, L, fN, NdotL, material) * material.Roulette.x +
+		SpecularBRDF(V, L, fN, NdotL, material) * material.Roulette.y
+		) * NdotL;
 }
 #endif // !SCATTERING_TOOLS_H
 

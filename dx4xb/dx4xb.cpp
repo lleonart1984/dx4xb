@@ -4033,6 +4033,53 @@ namespace dx4xb {
 			}
 	}
 
+	gObj<Texture3D> dx4xb::DeviceManager::LoadGrid(dx4xb::string filePath)
+	{
+		FILE* f;
+		if (fopen_s(&f, filePath.c_str(), "r"))
+			throw Exception::FromError(Errors::Invalid_Operation, "Grid file not found");
+
+		int width, height, slices;
+		double vx, vy, vz;
+		fread_s(&width, 4, 4, 1, f);
+		fread_s(&height, 4, 4, 1, f);
+		fread_s(&slices, 4, 4, 1, f);
+		fread_s(&vx, 8, 8, 1, f);
+		fread_s(&vy, 8, 8, 1, f);
+		fread_s(&vz, 8, 8, 1, f);
+		float* data = new float[width * height * slices];
+		float* xorderData = new float[width * height * slices];
+		fread_s(xorderData, width * height * slices * 4, 4, width * height * slices, f);
+		fclose(f);
+
+		int p = 0;
+		float maxValue = 0;
+		for (int z = 0; z < slices; z++)
+			for (int y = 0; y < height; y++)
+				for (int x = 0; x < width; x++)
+				{
+					float d = xorderData[x * height * slices + y * slices + z];
+					//if (d == 0.5)
+					//	d = 0;
+					data[p++] = max(0, d);
+					maxValue = max(maxValue, d);
+				}
+
+		float maxDim = maxf(width, maxf(height, slices));
+		float factor = 1.0f / powf(maxDim, 3);
+
+		for (int i = 0; i < p; i++)
+			data[i] /= maxValue; // normalize densities 0..1
+
+		gObj<Texture3D> result = CreateTexture3DSRV<float>(width, height, slices);
+		result->Write((byte*)data, false);
+
+		delete[] xorderData;
+
+		delete[] data;
+		return result;
+	}
+
 	gObj<Texture3D> dx4xb::DeviceManager::LoadTexture3D(dx4xb::string filePath)
 	{
 		FILE* f;
@@ -4072,7 +4119,7 @@ namespace dx4xb {
 			data[i].y = data[i].x * factor;
 			data[i].z = powf(data[i].x, 2) * factor;
 		}
-		
+
 		ComputeTotalSum((float*)data, 1, width, height, slices);
 		ComputeTotalSum((float*)data, 2, width, height, slices);
 
@@ -4084,6 +4131,7 @@ namespace dx4xb {
 		delete[] data;
 		return result;
 	}
+
 
 	int greaterPow2(unsigned int v) {
 		v--;

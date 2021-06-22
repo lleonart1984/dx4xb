@@ -74,7 +74,7 @@ class VPTTechnique : public Technique, public IManageScene, public IGatherImageS
 			binder->CBV(2, VolumeMaterial);
 			binder->CBV(3, Lighting);
 
-			binder->SMP_Static(0, Sampler::LinearWithoutMipMaps(D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP));
+			binder->SMP_Static(0, Sampler::PointWithoutMipMaps(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER));
 			
 			binder->UAV(0, Output);
 			binder->UAV(1, Accumulation);

@@ -1,9 +1,9 @@
-class VPTRTTechnique : public Technique, public IManageScene, public IGatherImageStatistics {
+class PathVisTechnique : public Technique, public IManageScene {
 
-	struct VPTPipeline : public ComputePipeline {
+	struct GenScatters : public ComputePipeline {
 
 		void Setup() {
-			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumeRendering\\VPTRT_CS.cso"));
+			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumeRendering\\GenScatters_CS.cso"));
 		}
 
 		gObj<Texture3D> HGrid;
@@ -18,9 +18,6 @@ class VPTRTTechnique : public Technique, public IManageScene, public IGatherImag
 		gObj<Buffer> VolumeMaterial;
 		gObj<Buffer> Lighting;
 
-		gObj<Texture2D> Output;
-		gObj<Texture2D> Accumulation;
-		gObj<Texture2D> SqrAccumulation;
 		gObj<Texture2D> Complexity;
 
 		gObj<Texture2D> RngStates;
@@ -35,20 +32,41 @@ class VPTRTTechnique : public Technique, public IManageScene, public IGatherImag
 
 			binder->SMP_Static(0, Sampler::Linear(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER));
 
-			binder->UAV(0, Output);
-			binder->UAV(1, Accumulation);
-			binder->UAV(2, SqrAccumulation);
-			binder->UAV(3, Complexity);
+			binder->UAV(0, Complexity);
 
 			binder->Space(2);
 			binder->UAV(0, RngStates);
 		}
 	};
+	gObj<GenScatters> pipeline;
 
-	gObj<VPTPipeline> pipeline;
+	struct ViewComplexity : public ComputePipeline {
+		void Setup() {
+			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumeRendering\\ViewComplexity_CS.cso"));
+		}
+
+		gObj<Texture2D> Complexity;
+
+		gObj<Texture2D> Output;
+
+		struct AccumulativeInfoCB {
+			int Pass;
+			int ShowComplexity;
+			float PathtracingRatio;
+			int Seed;
+		} AccumulativeInfo;
+
+		virtual void Bindings(gObj<ComputeBinder> binder) {
+			binder->Space(0);
+			binder->CBV(0, AccumulativeInfo);
+			binder->SRV(0, Complexity);
+			binder->UAV(0, Output);
+		}
+	};
+	gObj<ViewComplexity> viewing;
 
 public:
-	~VPTRTTechnique() {}
+	~PathVisTechnique() {}
 
 	struct VolumeMaterialCB {
 		float3 Extinction; float pad0;
@@ -65,18 +83,12 @@ public:
 		float rem2;
 	};
 
-	void getAccumulators(gObj<Texture2D>& sum, gObj<Texture2D>& sqrSum, int& frames)
-	{
-		sum = pipeline->Accumulation;
-		sqrSum = pipeline->SqrAccumulation;
-		frames = pipeline->AccumulativeInfo.Pass;
-	}
-
 	virtual void OnLoad() override {
 
 		auto desc = scene->getScene();
 
 		Load(pipeline); // loads the pipeline.
+		Load(viewing); // view the complexity
 
 		if (desc->getGrids().Count > 0) {
 			pipeline->HGrid = LoadGrid(desc->getGrids().Data[0]);
@@ -85,16 +97,15 @@ public:
 		// Allocate Memory for scene elements
 		pipeline->VolumeMaterial = CreateBufferCB<VolumeMaterialCB>();
 
-		pipeline->Output = CreateTexture2DUAV<RGBA>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
-		pipeline->Accumulation = CreateTexture2DUAV<float4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
-		pipeline->SqrAccumulation = CreateTexture2DUAV<float4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), 1, 1);
+		viewing->Output = CreateTexture2DUAV<RGBA>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
 		pipeline->Complexity = CreateTexture2DUAV<uint>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
-
-		pipeline->RngStates = CreateTexture2DUAV<uint4>(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height());
+		viewing->Complexity = pipeline->Complexity;
+		pipeline->RngStates = CreateTexture2DUAV<uint4>(1024,1024);
 
 		pipeline->Lighting = CreateBufferCB<LightingCB>();
 		pipeline->Camera = CreateBufferCB<float4x4>();
 		pipeline->AccumulativeInfo = {};
+		viewing->AccumulativeInfo = {};
 
 #ifdef SHOW_COMPLEXITY
 		pipeline->AccumulativeInfo.ShowComplexity = 1;
@@ -135,7 +146,7 @@ public:
 		{
 			float4x4 proj, view;
 			scene->getCamera().GetMatrices(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), view, proj);
-			pipeline->Camera->Write(mul(inverse(proj), inverse(view)));
+			pipeline->Camera->Write(mul(view, proj));
 			manager->ToGPU(pipeline->Camera);
 		}
 
@@ -161,7 +172,10 @@ public:
 		SceneElement elements = scene->Updated(sceneVersion);
 		UpdateBuffers(manager, elements);
 		if (elements != SceneElement::None)
+		{
 			pipeline->AccumulativeInfo.Pass = 0; // restart frame for Pathtracing...
+			viewing->AccumulativeInfo.Pass = 0;
+		}
 	}
 
 	void DrawScene(gObj<GraphicsManager> manager) {
@@ -172,16 +186,20 @@ public:
 			pipeline->AccumulativeInfo.Pass = 0;
 			pipeline->AccumulativeInfo.Seed = rand();
 
-			manager->ClearUAV(pipeline->Accumulation, uint4(0));
-			manager->ClearUAV(pipeline->Complexity, uint4(0));
+			manager->ClearUAV(pipeline->Complexity, uint(0));
 		}
 
 		manager->SetPipeline(pipeline);
 
+		manager->Dispatch(1024/32, 1024/32);
+		
+		manager->SetPipeline(viewing);
+
 		manager->Dispatch((int)ceil(CurrentRenderTarget()->Width() / 32.0), (int)ceil(CurrentRenderTarget()->Height() / 32.0));
 
-		manager->Copy(CurrentRenderTarget(), pipeline->Output);
+		manager->Copy(CurrentRenderTarget(), viewing->Output);
 
 		pipeline->AccumulativeInfo.Pass++;
+		viewing->AccumulativeInfo.Pass++;
 	}
 };

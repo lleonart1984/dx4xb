@@ -3,27 +3,32 @@
 #include "..\Tools\Definitions.h"
 
 Texture3D<float> Grid		: register(t0, space0); // Grid used in this pathtracer density
-sampler GridSampler			: register(s0);
-cbuffer Camera				: register(b0) {
+sampler GridSampler : register(s0);
+
+cbuffer Camera : register(b0) {
 	float4x4 FromProjectionToWorld;
 };
+
 // CB used to count passes of the PT and to know if the output image is a complexity image or the final color.
-cbuffer AccumulativeInfo	: register(b1) {
+cbuffer AccumulativeInfo : register(b1) {
 	uint NumberOfPasses;
 	uint ShowComplexity;
 	float PathtracingRatio;
 	uint AnimatedFrame;
 }
-cbuffer VolumeMaterial		: register(b2) {
+
+cbuffer VolumeMaterial : register(b2) {
 	float3 Extinction; float f0;
 	float3 ScatteringAlbedo; float f1;
 	float3 G; float f2;
 };
-cbuffer Lighting			: register(b3) {
+
+cbuffer Lighting : register(b3) {
 	float3 LightPosition;
 	float3 LightIntensity;
 	float3 LightDirection;
 }
+
 // Output textures
 RWTexture2D<float4> Output						: register(u0, space0); // Final Output image from the ray-trace
 RWTexture2D<float3> Accumulation				: register(u1, space0); // Auxiliar Accumulation Buffer
@@ -76,24 +81,17 @@ bool BoxIntersect(float3 bMin, float3 bMax, float3 P, float3 D, inout float tMin
 
 static int complexity;
 
+static float3 Grid_Min, Grid_Max;
+
 float SampleGrid(float3 P) {
-
 	complexity++;
-
-	float3 minim, maxim;
-	GetGridBox(minim, maxim);
-	float3 coordinate = (P - minim) / (maxim - minim);
+	float3 coordinate = (P - Grid_Min) / (Grid_Max - Grid_Min);
 	return Grid.SampleGrad(GridSampler, coordinate, 0, 0).x;
 }
 
 float GetComponent(float3 radiance) {
 	return radiance[NumberOfPasses % 3];
 }
-
-/// <summary>
-/// When implemented will compute the probability of photon transmission along a ray.
-/// </summary>
-float Transmittance(float3 x, float3 w, float d, float majorant, out float3 xs);
 
 float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 {
@@ -103,38 +101,21 @@ float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 	return min(min(max(T._m00, T._m10), max(T._m01, T._m11)), max(T._m02, T._m12));
 }
 
-bool BoxTransmittance(
-	float3 bMin, float3 bMax, 
-	float majorant, 
-	inout float3 x, inout float3 w) {
 
-	float density = GetComponent(Extinction);
-	float g = GetComponent(G);
-	float albedo = GetComponent(ScatteringAlbedo);
-
-	float tMin, tMax;
-	if (!BoxIntersect(bMin, bMax, x, w, tMin, tMax))
-		return true;
-	x += w * tMin;
-	float d = tMax - tMin;
-
-	while (true) {
-		float3 xs;
-		float T = Transmittance(x, w, d, majorant, xs);
-
-		x = xs;
-
-		if (random() < T) // no more scattering event
-			return true;
-
-		if (random() < 1 - albedo) // absorption
-			return false; 
-
-		w = ImportanceSamplePhase(g, w); // scattering event...
-
-		d = BoxExit(bMin, bMax, x, w);
-	}
-}
+/// <summary>
+/// Computes a transmittance computation through a box volume.
+/// Returns the transmittance probability, x and w are updated to the exiting position
+/// </summary>
+/// <param name="bMin"></param>
+/// <param name="bMax"></param>
+/// <param name="majorant"></param>
+/// <param name="x"></param>
+/// <param name="w"></param>
+/// <returns></returns>
+float BoxTransmittance(
+	float3 bMin, float3 bMax,
+	float majorant,
+	inout float3 x, inout float3 w);
 
 float Pathtrace(float3 x, float3 w);
 
@@ -158,6 +139,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	float3 O = viewP.xyz;
 	float3 D = normalize(viewT.xyz - viewP.xyz);
 
+	GetGridBox(Grid_Min, Grid_Max);
+
 	complexity = 0;
 
 	float3 radiance = 0;
@@ -166,3 +149,4 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
 	AccumulateOutput(DTid.xy, radiance, complexity);
 }
+

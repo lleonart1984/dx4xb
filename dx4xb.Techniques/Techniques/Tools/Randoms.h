@@ -89,6 +89,26 @@ void CreateOrthonormalBasis2(float3 D, out float3 B, out float3 T) {
 }
 
 
+float3 randomHSDirectionCosineWeighted(float3 N, out float NdotD)
+{
+	float3 t0, t1;
+	CreateOrthonormalBasis2(N, t0, t1);
+
+	while (true) {
+		float x = random() * 2 - 1;
+		float y = random() * 2 - 1;
+		float d2 = x * x + y * y;
+		if (d2 < 1)
+		{
+			float z = sqrt(1 - d2);
+			NdotD = z;
+			return t0 * x + t1 * y + N * z;
+		}
+	}
+}
+
+
+
 float3 randomDirection(float3 D) {
 	float r1 = random();
 	float r2 = random() * 2 - 1;

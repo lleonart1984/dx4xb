@@ -58,6 +58,7 @@ float3 ComputePath(float3 O, float3 D, inout int complexity)
 
 			payload = (RayPayload)0;
 			bool clearPathToLight = !Intersect(surfel.P + surfel.N * 0.0001, LightDirection, payload); // Shadow ray
+
 			directContribution += clearPathToLight * importance * LightIntensity * DirectContribution(-w, LightDirection, surfel.N, dot(surfel.N, LightDirection), material);
 
 			SurfelScattering(x, w, importance, surfel, material);

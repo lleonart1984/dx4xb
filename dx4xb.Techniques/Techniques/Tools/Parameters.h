@@ -4,7 +4,7 @@
 // Use narrow light source to show real bias and variance in algorithms
 //#define USE_NARROW_LIGHTSOURCE
 
-#define USE_CVAE_X
+//#define USE_CVAE_X
 
 #define NO_DRAW_LIGHT_SOURCE
 
@@ -15,6 +15,9 @@
 //#define MAX_PATHTRACING_BOUNCES 5
 #define MAX_PATHTRACING_BOUNCES 4
 
-//#define SHOW_COMPLEXITY
+#define SHOW_COMPLEXITY
+
+#define SV_SIZE 16
+
 
 #endif
