@@ -162,6 +162,12 @@
     <ClInclude Include="Techniques\VolumePathtracing\ComputeMajorant.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_DDT_Strategy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_CF_Strategy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

@@ -14,7 +14,15 @@ float Pathtrace(float3 x, float3 w) {
 	float d = tMax - tMin;
 	x += w * tMin;
 
-	float T = BoxTransmittance(Grid_Min, Grid_Max, density, x, w);
+	BOX_INFO box = {
+			Grid_Min,
+			Grid_Max,
+			density,
+			0,
+			0.5 * density
+	};
+
+	float T = BoxTransmittance(box, x, w);
 
 	float3 sky = SampleSkybox(x, w);
 #ifdef NO_DRAW_LIGHT_SOURCE

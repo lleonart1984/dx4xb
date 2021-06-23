@@ -1,4 +1,3 @@
-Texture3D<float> Majorants : register(t1);
 
 // Implementation of a simple path tracing in the volume box
 float Pathtrace(float3 x, float3 w) {
@@ -39,8 +38,16 @@ float Pathtrace(float3 x, float3 w) {
 
 		float3 xc = (cellMax + cellMin) * 0.5;
 
-		complexity++;
-		T *= BoxTransmittance(cellMin, cellMax, Majorants[cell]*density, x, w);
+		BOX_INFO cellInfo = {
+			cellMin,
+			cellMax,
+			Majorants[cell] * density,
+			Minorants[cell] * density,
+			Average[cell] * density
+		};
+
+		//complexity++;
+		T *= BoxTransmittance(cellInfo, x, w);
 
 		if (T <= 0.00001)
 			return 0; // stop if absorption exceds a threshold

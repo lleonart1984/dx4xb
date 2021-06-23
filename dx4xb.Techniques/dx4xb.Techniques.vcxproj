@@ -192,6 +192,8 @@
     <ClInclude Include="Techniques\Tools\Scattering.h" />
     <ClInclude Include="Techniques\VolumePathtracing\ComputeMajorant.h" />
     <ClInclude Include="Techniques\VolumePathtracing\VPT_Base.h" />
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_CF_Strategy.h" />
+    <ClInclude Include="Techniques\VolumePathtracing\VPT_DDT_Strategy.h" />
     <ClInclude Include="Techniques\VolumePathtracing\VPT_DT_Strategy.h" />
     <ClInclude Include="Techniques\VolumePathtracing\VPT_NoAcc.h" />
     <ClInclude Include="Techniques\VolumePathtracing\VPT_SVAcc.h" />

@@ -10,6 +10,8 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 		gObj<Texture3D> Grid;
 
 		gObj<Texture3D> Majorants;
+		gObj<Texture3D> Minorants;
+		gObj<Texture3D> Average;
 
 		gObj<Buffer> Camera;
 		struct AccumulativeInfoCB {
@@ -32,6 +34,8 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 			binder->Space(0);
 			binder->SRV(0, Grid);
 			binder->SRV(1, Majorants);
+			binder->SRV(2, Minorants);
+			binder->SRV(3, Average);
 			binder->CBV(0, Camera);
 			binder->CBV(1, AccumulativeInfo);
 			binder->CBV(2, VolumeMaterial);
@@ -89,6 +93,8 @@ public:
 		if (desc->getGrids().Count > 0) {
 			pipeline->Grid = computeMajorant->Grid = LoadGrid(desc->getGrids().Data[0]);
 			pipeline->Majorants = computeMajorant->Majorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
+			pipeline->Minorants = computeMajorant->Minorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
+			pipeline->Average = computeMajorant->Average = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
 		}
 
 		// Allocate Memory for scene elements

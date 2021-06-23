@@ -3,7 +3,12 @@
 #include "..\Tools\Definitions.h"
 
 Texture3D<float> Grid		: register(t0, space0); // Grid used in this pathtracer density
-sampler GridSampler : register(s0);
+sampler GridSampler			: register(s0);
+
+Texture3D<float> Majorants	: register(t1);
+Texture3D<float> Minorants	: register(t2);
+Texture3D<float> Average	: register(t3);
+
 
 cbuffer Camera : register(b0) {
 	float4x4 FromProjectionToWorld;
@@ -102,6 +107,14 @@ float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 }
 
 
+struct BOX_INFO {
+	float3 Min_Coord;
+	float3 Max_Coord;
+	float Majorant;
+	float Minorant;
+	float Average;
+};
+
 /// <summary>
 /// Computes a transmittance computation through a box volume.
 /// Returns the transmittance probability, x and w are updated to the exiting position
@@ -113,8 +126,7 @@ float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 /// <param name="w"></param>
 /// <returns></returns>
 float BoxTransmittance(
-	float3 bMin, float3 bMax,
-	float majorant,
+	in BOX_INFO box,
 	inout float3 x, inout float3 w);
 
 float Pathtrace(float3 x, float3 w);
