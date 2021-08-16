@@ -38,6 +38,8 @@ float Pathtrace(float3 x, float3 w) {
 
 		float3 xc = (cellMax + cellMin) * 0.5;
 
+		complexity += 2;
+
 		BOX_INFO cellInfo = {
 			cellMin,
 			cellMax,
@@ -52,9 +54,11 @@ float Pathtrace(float3 x, float3 w) {
 		if (T <= 0.00001)
 			return 0; // stop if absorption exceds a threshold
 
-		float3 mov = abs(x + w*0.001 - xc);
+		float3 mov = x + w*0.001 - xc;
+		float3 smov = sign(mov);
+		mov *= smov;
 
-		int3 cellmov = int3(mov.x >= mov.y && mov.x >= mov.z, mov.y >= mov.x && mov.y >= mov.z, mov.z >= mov.x && mov.z >= mov.y) * sign (x - xc);
+		int3 cellmov = int3(mov.x >= mov.y && mov.x >= mov.z, mov.y >= mov.x && mov.y >= mov.z, mov.z >= mov.x && mov.z >= mov.y) * smov;
 		
 		cell += cellmov;
 

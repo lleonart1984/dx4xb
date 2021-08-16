@@ -2,13 +2,8 @@
 
 #include "..\Tools\Definitions.h"
 
-Texture3D<float> Grid		: register(t0, space0); // Grid used in this pathtracer density
-sampler GridSampler			: register(s0);
-
-Texture3D<float> Majorants	: register(t1);
-Texture3D<float> Minorants	: register(t2);
-Texture3D<float> Average	: register(t3);
-
+Texture3D<float> Grid			: register(t0, space0); // Grid used in this pathtracer (average density and radius)
+sampler GridSampler				: register(s0);
 
 cbuffer Camera : register(b0) {
 	float4x4 FromProjectionToWorld;
@@ -85,6 +80,7 @@ bool BoxIntersect(float3 bMin, float3 bMax, float3 P, float3 D, inout float tMin
 }
 
 static int complexity;
+static int scatters;
 
 static float3 Grid_Min, Grid_Max;
 
@@ -98,38 +94,34 @@ float GetComponent(float3 radiance) {
 	return radiance[NumberOfPasses % 3];
 }
 
-float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
-{
-	float2x3 C = float2x3(bMin - x, bMax - x);
-	float2x3 D2 = float2x3(w, w);
-	float2x3 T = abs(D2) <= 0.000001 ? float2x3(float3(-1000, -1000, -1000), float3(1000, 1000, 1000)) : C / D2;
-	return min(min(max(T._m00, T._m10), max(T._m01, T._m11)), max(T._m02, T._m12));
-}
-
-
-struct BOX_INFO {
-	float3 Min_Coord;
-	float3 Max_Coord;
-	float Majorant;
-	float Minorant;
-	float Average;
-};
-
 /// <summary>
-/// Computes a transmittance computation through a box volume.
+/// Computes a transmittance computation through a sphere volume starting flying in the center x in direction w.
 /// Returns the transmittance probability, x and w are updated to the exiting position
 /// </summary>
-/// <param name="bMin"></param>
-/// <param name="bMax"></param>
-/// <param name="majorant"></param>
-/// <param name="x"></param>
-/// <param name="w"></param>
-/// <returns></returns>
-float BoxTransmittance(
-	in BOX_INFO box,
-	inout float3 x, inout float3 w);
+float SphereTransmittance(inout float3 x, inout float3 w);
 
-float Pathtrace(float3 x, float3 w);
+float Pathtrace(float3 x, float3 w)
+{
+	float T = 1;
+
+	while (true) {
+
+		float tMin, tMax;
+		if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
+#ifdef NO_DRAW_LIGHT_SOURCE
+			return T * GetComponent(SampleSkybox(x, w) + SampleLight(w));
+#else
+			return T * GetComponent(SampleSkybox(x, w) + SampleLight(w));
+#endif
+
+		x += w * tMin;
+
+		T *= SphereTransmittance(x, w);
+
+		if (T < 0.00001)
+			return 0;
+	}
+}
 
 [numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID)

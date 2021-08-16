@@ -87,7 +87,7 @@ float3 SampleSkybox(float3 P, float3 L) {
 	float d = 10;// max(0, 0.4 - P.y) * 5;
 
 	// disney sky
-	col = L.y > -0.2 ? float3(0.3, 0.4, 1) : float3(0.3, 0.35, 0.3)*0.5;
+	//col = L.y > -0.2 ? float3(0.3, 0.4, 1) : float3(0.3, 0.35, 0.3)*0.5;
 
 #ifdef USE_SKYBOX
 	return col;
@@ -100,7 +100,8 @@ float3 SampleSkybox(float3 P, float3 L) {
 float3 SampleLight(float3 L)
 {
 #ifdef USE_NARROW_LIGHTSOURCE
-	int N = 80;
+	int N = 480;
+	//int N = 80;
 #else
 	int N = 10;
 #endif

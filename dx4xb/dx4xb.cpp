@@ -2264,7 +2264,7 @@ namespace dx4xb {
 			singleSubresource->w_view, region);
 	}
 	
-	void dx4xb::CopyManager::Copy(gObj<Texture2D> dst, gObj<Texture2D> src)
+	void dx4xb::CopyManager::Copy(gObj<ResourceView> dst, gObj<ResourceView> src)
 	{
 		dst->w_resource->AddBarrier(w_cmdList->cmdList,
 			D3D12_RESOURCE_STATE_COPY_DEST);
@@ -2273,6 +2273,91 @@ namespace dx4xb {
 		w_cmdList->cmdList->CopyResource(
 			dst->w_resource->resource,
 			src->w_resource->resource);
+	}
+
+	void dx4xb::CopyManager::Copy(gObj<Buffer> dst, int dstOffset, gObj<Buffer> src, int srcOffset, int numberOfBytes)
+	{
+		dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		src->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		w_cmdList->cmdList->CopyBufferRegion(dst->w_resource->resource, dstOffset, src->w_resource->resource, srcOffset, numberOfBytes);
+	}
+
+	void dx4xb::CopyManager::Copy(gObj<Texture1D> dst, int dstX, gObj<Texture1D> src, int srcX, int texels)
+	{
+		dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		src->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		int dst_index = dst->w_view->arrayStart * (dst->w_resource->desc.MipLevels) + dst->w_view->mipStart;
+		int src_index = src->w_view->arrayStart * (src->w_resource->desc.MipLevels) + src->w_view->mipStart;
+
+		D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+		dstLoc.pResource = dst->w_resource->resource;
+		dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dstLoc.SubresourceIndex = dst_index;
+
+		D3D12_TEXTURE_COPY_LOCATION srcLoc = { };
+		srcLoc.pResource = src->w_resource->resource;
+		srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		srcLoc.SubresourceIndex = src_index;
+
+		D3D12_BOX box = { srcX, 0, 0, srcX + texels, 1, 1 };
+
+		w_cmdList->cmdList->CopyTextureRegion(&dstLoc, dstX, 0, 0, &srcLoc, &box);
+	}
+
+	void dx4xb::CopyManager::Copy(gObj<Texture2D> dst, int dstX, int dstY, gObj<Texture2D> src, int srcX, int srcY, int texelsX, int texelsY)
+	{
+		dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		src->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		int dst_index = dst->w_view->arrayStart * (dst->w_resource->desc.MipLevels) + dst->w_view->mipStart;
+		int src_index = src->w_view->arrayStart * (src->w_resource->desc.MipLevels) + src->w_view->mipStart;
+
+		D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+		dstLoc.pResource = dst->w_resource->resource;
+		dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dstLoc.SubresourceIndex = dst_index;
+
+		D3D12_TEXTURE_COPY_LOCATION srcLoc = { };
+		srcLoc.pResource = src->w_resource->resource;
+		srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		srcLoc.SubresourceIndex = src_index;
+
+		D3D12_BOX box = { srcX, srcY, 0, srcX + texelsX, srcY + texelsY, 1 };
+
+		w_cmdList->cmdList->CopyTextureRegion(&dstLoc, dstX, dstY, 0, &srcLoc, &box);
+	}
+
+	void dx4xb::CopyManager::Copy(gObj<Texture3D> dst, int dstX, int dstY, int dstZ, gObj<Texture3D> src, int srcX, int srcY, int srcZ, int texelsX, int texelsY, int texelsZ)
+	{
+		dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_DEST);
+		src->w_resource->AddBarrier(w_cmdList->cmdList,
+			D3D12_RESOURCE_STATE_COPY_SOURCE);
+
+		int dst_index = dst->w_view->mipStart;
+		int src_index = src->w_view->mipStart;
+
+		D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
+		dstLoc.pResource = dst->w_resource->resource;
+		dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		dstLoc.SubresourceIndex = dst_index;
+
+		D3D12_TEXTURE_COPY_LOCATION srcLoc = { };
+		srcLoc.pResource = src->w_resource->resource;
+		srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		srcLoc.SubresourceIndex = src_index;
+
+		D3D12_BOX box = { srcX, srcY, srcZ, srcX + texelsX, srcY + texelsY, srcZ + texelsZ };
+
+		w_cmdList->cmdList->CopyTextureRegion(&dstLoc, dstX, dstY, dstZ, &srcLoc, &box);
 	}
 
 	void dx4xb::ComputeManager::SetPipeline(gObj<Pipeline> pipeline)
@@ -3370,8 +3455,8 @@ namespace dx4xb {
 			break;
 		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
 			d.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE3D;
-			d.Texture3D.WSize = arrayCount;
-			d.Texture3D.FirstWSlice = arrayStart;
+			d.Texture3D.WSize = -1;
+			d.Texture3D.FirstWSlice = 0;
 			d.Texture3D.MipSlice = mipStart;
 			d.Format = !w_resource->resource ? DXGI_FORMAT_R8G8B8A8_UNORM : w_resource->desc.Format;
 			break;
@@ -4033,7 +4118,7 @@ namespace dx4xb {
 			}
 	}
 
-	gObj<Texture3D> dx4xb::DeviceManager::LoadGrid(dx4xb::string filePath)
+	gObj<Texture3D> dx4xb::DeviceManager::LoadGrid(dx4xb::string filePath, bool allocateMips)
 	{
 		FILE* f;
 		if (fopen_s(&f, filePath.c_str(), "r"))
@@ -4071,8 +4156,8 @@ namespace dx4xb {
 		for (int i = 0; i < p; i++)
 			data[i] /= maxValue; // normalize densities 0..1
 
-		gObj<Texture3D> result = CreateTexture3DSRV<float>(width, height, slices);
-		result->Write((byte*)data, false);
+		gObj<Texture3D> result = CreateTexture3DSRV<float>(width, height, slices, allocateMips ? 0 : 1);
+		result->SliceMips(0)->Write((byte*)data, false);
 
 		delete[] xorderData;
 

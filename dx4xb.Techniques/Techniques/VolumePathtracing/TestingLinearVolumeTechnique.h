@@ -1,17 +1,10 @@
-class VPT_Technique : public Technique, public IManageScene, public IGatherImageStatistics {
+class TestingLinearVolumeTechnique : public Technique, public IManageScene, public IGatherImageStatistics {
 
-	struct VPT_Pipeline : public ComputePipeline {
+	struct Test_Pipeline : public ComputePipeline {
 
 		void Setup() {
-			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_SV_DT_CS.cso"));
-			//set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_NoAcc_DT_CS.cso"));
+			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\TestingGradientScattering_CS.cso"));
 		}
-
-		gObj<Texture3D> Grid;
-
-		gObj<Texture3D> Majorants;
-		gObj<Texture3D> Minorants;
-		gObj<Texture3D> Average;
 
 		gObj<Buffer> Camera;
 		struct AccumulativeInfoCB {
@@ -32,16 +25,10 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 
 		virtual void Bindings(gObj<ComputeBinder> binder) {
 			binder->Space(0);
-			binder->SRV(0, Grid);
-			binder->SRV(1, Majorants);
-			binder->SRV(2, Minorants);
-			binder->SRV(3, Average);
 			binder->CBV(0, Camera);
 			binder->CBV(1, AccumulativeInfo);
 			binder->CBV(2, VolumeMaterial);
 			binder->CBV(3, Lighting);
-
-			binder->SMP_Static(0, Sampler::PointWithoutMipMaps(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER));
 
 			binder->UAV(0, Output);
 			binder->UAV(1, Accumulation);
@@ -53,13 +40,10 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 		}
 	};
 
-#include "ComputeCellInfo_Pipeline.h"
-
-	gObj<VPT_Pipeline> pipeline;
-	gObj<ComputeCellInfo> computeMajorant;
+	gObj<Test_Pipeline> pipeline;
 
 public:
-	~VPT_Technique() {}
+	~TestingLinearVolumeTechnique() {}
 
 	struct VolumeMaterialCB {
 		float3 Extinction; float pad0;
@@ -83,19 +67,15 @@ public:
 		frames = pipeline->AccumulativeInfo.Pass;
 	}
 
+	int halfDim(int d) {
+		return d / 2;
+	}
+
 	virtual void OnLoad() override {
 
 		auto desc = scene->getScene();
 
 		Load(pipeline); // loads the pipeline.
-		Load(computeMajorant);
-
-		if (desc->getGrids().Count > 0) {
-			pipeline->Grid = computeMajorant->Grid = LoadGrid(desc->getGrids().Data[0]);
-			pipeline->Majorants = computeMajorant->Majorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
-			pipeline->Minorants = computeMajorant->Minorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
-			pipeline->Average = computeMajorant->Average = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
-		}
 
 		// Allocate Memory for scene elements
 		pipeline->VolumeMaterial = CreateBufferCB<VolumeMaterialCB>();
@@ -140,13 +120,6 @@ public:
 
 			pipeline->VolumeMaterial->Write(volMat);
 			manager->ToGPU(pipeline->VolumeMaterial);
-		}
-
-		if (+(elements & SceneElement::Textures)) {
-			manager->ToGPU(pipeline->Grid);
-
-			manager->SetPipeline(computeMajorant); // compute majorants if grid is updated
-			manager->Dispatch((int)ceil(computeMajorant->Majorant->Width() / 8.0), (int)ceil(computeMajorant->Majorant->Height() / 8.0), (int)ceil(computeMajorant->Majorant->Depth() / 8.0));
 		}
 
 		if (+(elements & SceneElement::Camera))

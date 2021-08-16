@@ -16,7 +16,7 @@ float invertcdf(float GFactor, float xi) {
 }
 
 void CreateOrthonormalBasis(float3 D, out float3 B, out float3 T) {
-	float3 other = abs(D.z) >= 0.999 ? float3(1, 0, 0) : float3(0, 0, 1);
+	float3 other = abs(D.z) >= 0.9999 ? float3(1, 0, 0) : float3(0, 0, 1);
 	B = normalize(cross(other, D));
 	T = normalize(cross(D, B));
 }

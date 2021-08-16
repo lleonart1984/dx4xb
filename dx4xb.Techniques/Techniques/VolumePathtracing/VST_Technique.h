@@ -1,17 +1,23 @@
-class VPT_Technique : public Technique, public IManageScene, public IGatherImageStatistics {
+class VST_Technique : public Technique, public IManageScene, public IGatherImageStatistics {
 
-	struct VPT_Pipeline : public ComputePipeline {
+#include "VolMipMap_Pipeline.h"
+	gObj<VolMipMap> mipmapping;
+
+#include "ComputeRadii_Pipeline.h"
+	gObj<ComputeRadii> computingRadii;
+
+#include "CacheRadiiAndAverage_Pipeline.h"
+	gObj<CacheRadiiAndAverage> cachingRadiiAndAverage;
+
+	struct VST_Pipeline : public ComputePipeline {
 
 		void Setup() {
-			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_SV_DT_CS.cso"));
-			//set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_NoAcc_DT_CS.cso"));
+			//set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VST_Hom_MC_CS.cso"));
+			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VST_Hom_CVAE_CS.cso"));
 		}
 
 		gObj<Texture3D> Grid;
-
-		gObj<Texture3D> Majorants;
-		gObj<Texture3D> Minorants;
-		gObj<Texture3D> Average;
+		gObj<Texture3D> SphereGrid;
 
 		gObj<Buffer> Camera;
 		struct AccumulativeInfoCB {
@@ -33,15 +39,14 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 		virtual void Bindings(gObj<ComputeBinder> binder) {
 			binder->Space(0);
 			binder->SRV(0, Grid);
-			binder->SRV(1, Majorants);
-			binder->SRV(2, Minorants);
-			binder->SRV(3, Average);
+			binder->SRV(1, SphereGrid);
+
 			binder->CBV(0, Camera);
 			binder->CBV(1, AccumulativeInfo);
 			binder->CBV(2, VolumeMaterial);
 			binder->CBV(3, Lighting);
 
-			binder->SMP_Static(0, Sampler::PointWithoutMipMaps(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER));
+			binder->SMP_Static(0, Sampler::PointWithoutMipMaps(D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP));
 
 			binder->UAV(0, Output);
 			binder->UAV(1, Accumulation);
@@ -53,13 +58,18 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 		}
 	};
 
-#include "ComputeCellInfo_Pipeline.h"
+	gObj<VST_Pipeline> pipeline;
 
-	gObj<VPT_Pipeline> pipeline;
-	gObj<ComputeCellInfo> computeMajorant;
+	gObj<Texture3D> MinorantMipMap;
+	gObj<Texture3D> MajorantMipMap;
+	gObj<Texture3D> AverageMipMap;
+	
+	gObj<Texture3D> Tmp_Minorant;
+	gObj<Texture3D> Tmp_Majorant;
+	gObj<Texture3D> Tmp_Average;
 
 public:
-	~VPT_Technique() {}
+	~VST_Technique() {}
 
 	struct VolumeMaterialCB {
 		float3 Extinction; float pad0;
@@ -83,18 +93,41 @@ public:
 		frames = pipeline->AccumulativeInfo.Pass;
 	}
 
+	int halfDim(int d) {
+		return d / 2;
+	}
+
 	virtual void OnLoad() override {
 
 		auto desc = scene->getScene();
 
 		Load(pipeline); // loads the pipeline.
-		Load(computeMajorant);
+		Load(mipmapping);
+		Load(computingRadii);
+		Load(cachingRadiiAndAverage);
 
 		if (desc->getGrids().Count > 0) {
-			pipeline->Grid = computeMajorant->Grid = LoadGrid(desc->getGrids().Data[0]);
-			pipeline->Majorants = computeMajorant->Majorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
-			pipeline->Minorants = computeMajorant->Minorant = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
-			pipeline->Average = computeMajorant->Average = CreateTexture3DUAV<float>((int)ceil(pipeline->Grid->Width() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Height() / (double)SV_SIZE), (int)ceil(pipeline->Grid->Depth() / (double)SV_SIZE));
+			pipeline->Grid = LoadGrid(desc->getGrids().Data[0]);
+			pipeline->SphereGrid = CreateTexture3DUAV<float2>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth());
+
+			this->MajorantMipMap = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()), 0);
+			this->MinorantMipMap = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()), 0);
+			this->AverageMipMap = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()), 0);
+
+			this->Tmp_Majorant = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()));
+			this->Tmp_Minorant = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()));
+			this->Tmp_Average = CreateTexture3DUAV<float>(halfDim(pipeline->Grid->Width()), halfDim(pipeline->Grid->Height()), halfDim(pipeline->Grid->Depth()));
+			
+			computingRadii->Radii = CreateTexture3DUAV<int>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth());
+			computingRadii->Majorant = this->MajorantMipMap;
+			computingRadii->Minorant = this->MinorantMipMap;
+			computingRadii->Average = this->AverageMipMap;
+			computingRadii->Grid = pipeline->Grid;
+
+			cachingRadiiAndAverage->Grid = pipeline->Grid;
+			cachingRadiiAndAverage->Radii = computingRadii->Radii;
+			cachingRadiiAndAverage->Average = AverageMipMap;
+			cachingRadiiAndAverage->SphereGrid = pipeline->SphereGrid;
 		}
 
 		// Allocate Memory for scene elements
@@ -145,8 +178,45 @@ public:
 		if (+(elements & SceneElement::Textures)) {
 			manager->ToGPU(pipeline->Grid);
 
-			manager->SetPipeline(computeMajorant); // compute majorants if grid is updated
-			manager->Dispatch((int)ceil(computeMajorant->Majorant->Width() / 8.0), (int)ceil(computeMajorant->Majorant->Height() / 8.0), (int)ceil(computeMajorant->Majorant->Depth() / 8.0));
+			// compute mip maps if grid is updated
+			manager->SetPipeline(mipmapping);
+
+			int w = MajorantMipMap->Width();
+			int h = MajorantMipMap->Height();
+			int d = MajorantMipMap->Depth();
+			mipmapping->Src_Majorant = pipeline->Grid;
+			mipmapping->Src_Minorant = pipeline->Grid;
+			mipmapping->Src_Average = pipeline->Grid;
+			mipmapping->Dst_Majorant = Tmp_Majorant;
+			mipmapping->Dst_Minorant = Tmp_Minorant;
+			mipmapping->Dst_Average = Tmp_Average;
+			int currentMipLevel = 0;
+			while (w > 1 && h > 1 && d > 1) {
+				manager->Dispatch((int)ceil(w / 8.0), (int)ceil(h / 8.0), (int)ceil(d / 8.0));
+				// Copy from Temporal Resources to Specific Mip.
+				// This is because can not be bound at same time two mips from same resource as SRV and UAV.
+
+				mipmapping->Src_Majorant = MajorantMipMap->SliceMips(currentMipLevel);
+				mipmapping->Src_Minorant = MinorantMipMap->SliceMips(currentMipLevel);
+				mipmapping->Src_Average = AverageMipMap->SliceMips(currentMipLevel);
+
+				manager->Copy(mipmapping->Src_Majorant, 0, 0, 0, Tmp_Majorant, 0, 0, 0, w, h, d);
+				manager->Copy(mipmapping->Src_Minorant, 0, 0, 0, Tmp_Minorant, 0, 0, 0, w, h, d);
+				manager->Copy(mipmapping->Src_Average, 0, 0, 0, Tmp_Average, 0, 0, 0, w, h, d);
+				
+				w = halfDim(w);
+				h = halfDim(h);
+				d = halfDim(d);
+				currentMipLevel++;
+			}
+
+			// Compute Radii using heuristics over mip maps
+			manager->SetPipeline(computingRadii);
+			manager->Dispatch((int)ceil(computingRadii->Radii->Width() / 8.0), (int)ceil(computingRadii->Radii->Height() / 8.0), (int)ceil(computingRadii->Radii->Depth() / 8.0));
+
+			// Caching Radii as the real size and the average for the specific level
+			manager->SetPipeline(cachingRadiiAndAverage);
+			manager->Dispatch((int)ceil(cachingRadiiAndAverage->SphereGrid->Width() / 8.0), (int)ceil(cachingRadiiAndAverage->SphereGrid->Height() / 8.0), (int)ceil(cachingRadiiAndAverage->SphereGrid->Depth() / 8.0));
 		}
 
 		if (+(elements & SceneElement::Camera))

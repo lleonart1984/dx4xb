@@ -14,9 +14,11 @@ float BoxTransmittance(
 	
 	float t = 0;
 
+	float hetSpace = max(0.0001, box.Majorant - box.Minorant);
+
 	while (true) {
 
-		t -= log(max(0.000000001, 1 - random())) / max(0.0001, box.Majorant - box.Minorant);
+		t -= log(max(0.000000001, 1 - random())) / hetSpace;
 
 		if (t >= d && h >= d) // next scattering event is outside the box
 		{
@@ -26,13 +28,11 @@ float BoxTransmittance(
 
 		bool scatter = false;
 		float3 xs = x + w * min(h, t); // next-scattering in heterogeneous residual
-		if (h <= t) {
+		if (h <= t) 
 			scatter = true;
-		}
 		else
-			if (random() * (box.Majorant - box.Minorant) < (SampleGrid(xs) * density - box.Minorant))
-				scatter = true;
-
+			scatter = random() * hetSpace < (SampleGrid(xs) * density - box.Minorant);
+		
 		if (scatter) // scatter event
 		{
 			x = xs;

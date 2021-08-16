@@ -1260,9 +1260,12 @@ public:
 	void SetupScene() {
 
 		//<lookat target = "6.021, 100.043, -43.679" origin = "648.064, -82.473, -63.856" up = "0.273, 0.962, -0.009" / >
-		//camera.FoV = 54.43 * PI / 180;
+		camera.FoV = 54.43 * PI / 180;
+		//camera.Position = float3(0, 0, 4);
 		camera.Position = float3(648.064, -82.473, -63.856)/600 - float3(-9.984, 73.008, -42.64) / 600;
+		//camera.Target = float3(0, 0, 0);
 		camera.Target = float3(6.021, 100.043, -43.679)/ 600 - float3(-9.984, 73.008, -42.64) / 600;
+		//camera.Up = normalize(float3(0, 1, 0));
 		camera.Up = normalize(float3(0.273, 0.962, -0.009));
 		camera.NearPlane = 0.01f;
 		camera.FarPlane = 100;
@@ -1273,8 +1276,8 @@ public:
 		//	< / emitter>
 
 		lights[0].Direction = normalize(float3(0.5826, 0.7660, 0.2717)); // Disney set
-		//lights[0].Direction = normalize(float3(-1, 0.4, 0));
-		lights[0].Intensity = float3(2.6, 2.5, 2.3);
+		//lights[0].Direction = normalize(float3(0, 0, -1));
+		lights[0].Intensity = float3(2.6, 2.5, 2.3)*1;
 		//lights[0].Intensity = float3(2.8, 2.7, 2.3)*3;
 
 		dx4xb::string desktopPath = desktop_directory();
@@ -1290,7 +1293,77 @@ public:
 		int gridIndex = scene->appendGrid(gridPath);
 		scene->appendMaterial(SceneMaterial());
 		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
-				float3(1, 1, 1) * 512, // sigma
+				float3(1, 1, 1) * 1024, // sigma
+				float3(1, 1, 1),
+				float3(0.875, 0.875, 0.875)
+			});
+
+		//<shape type = "cube">
+		//	<ref name = "interior" id = "cloud" / >
+		//	<transform name = "toWorld">
+		//	<scale x = "206.544" y = "140.4" z = "254.592" / >
+		//	<translate x = "-9.984" y = "73.008" z = "-42.64" / >
+		//	< / transform>
+		//	< / shape>
+
+		scene->appendVolume(gridIndex, volMat);// , mul(Transforms::Scale(206.544, 140.4, 254.592) / 100, Transforms::Translate(-9.984, 73.008, -42.64) / 100));
+
+		SetTransforms(0);
+
+		SceneManager::SetupScene();
+	}
+
+	void SetTransforms(float time) {
+	}
+
+	virtual void Animate(float time, int frame, SceneElement freeze = SceneElement::None) override {
+		return;//
+	}
+};
+
+class TestVolCloudScene : public SceneManager {
+public:
+	TestVolCloudScene() :SceneManager() {
+	}
+	~TestVolCloudScene() {}
+
+	void SetupScene() {
+
+		//<lookat target = "6.021, 100.043, -43.679" origin = "648.064, -82.473, -63.856" up = "0.273, 0.962, -0.009" / >
+		//camera.FoV = 54.43 * PI / 180;
+		camera.Position = float3(0, 0, 4);
+		//camera.Position = float3(648.064, -82.473, -63.856)/600 - float3(-9.984, 73.008, -42.64) / 600;
+		camera.Target = float3(0, 0, 0);
+		//camera.Target = float3(6.021, 100.043, -43.679)/ 600 - float3(-9.984, 73.008, -42.64) / 600;
+		camera.Up = normalize(float3(0, 1, 0));
+		//camera.Up = normalize(float3(0.273, 0.962, -0.009));
+		camera.NearPlane = 0.01f;
+		camera.FarPlane = 100;
+
+		//<emitter type = "directional">
+		//	<spectrum name = "irradiance" value = "2.6, 2.5, 2.3" / >
+		//	<vector name = "direction" x = "-0.5826" y = "-0.7660" z = "-0.2717" / >
+		//	< / emitter>
+
+		//lights[0].Direction = normalize(float3(0.5826, 0.7660, 0.2717)); // Disney set
+		lights[0].Direction = normalize(float3(0, 0, -1));
+		lights[0].Intensity = float3(2.6, 2.5, 2.3) * 1;
+		//lights[0].Intensity = float3(2.8, 2.7, 2.3)*3;
+
+		dx4xb::string desktopPath = desktop_directory();
+
+		//dx4xb::string platePath = desktopPath + dx4xb::string("\\Models\\plate.obj");
+		//auto plateScene = OBJLoader::Load(platePath);
+		//scene->appendScene(plateScene);
+
+		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1196.xyz");
+		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\cloud-1940.xyz");
+		//dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\disney_small.xyz");
+		dx4xb::string gridPath = desktopPath + dx4xb::string("\\clouds\\disney_big.xyz");
+		int gridIndex = scene->appendGrid(gridPath);
+		scene->appendMaterial(SceneMaterial());
+		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
+				float3(1, 1, 1) * 16,//1024, // sigma
 				float3(1, 1, 1),
 				float3(0.875, 0.875, 0.875)
 			});

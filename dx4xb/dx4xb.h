@@ -304,6 +304,7 @@ namespace dx4xb {
 			this->z = z;
 		}
 		int3(int v) :int3(v, v, v) {}
+		int3() : int3(0, 0, 0) {}
 		operator int1() const { return int1(this->x); }
 		operator int2() const { return int2(this->x, this->y); }
 		operator float3() const;
@@ -5364,6 +5365,33 @@ namespace dx4xb {
 				AddressW);
 		}
 
+
+		// Creates a default Maximum sampling object
+		static Sampler Maximum(
+			D3D12_TEXTURE_ADDRESS_MODE AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER
+		)
+		{
+			return Create(D3D12_FILTER_MAXIMUM_MIN_MAG_MIP_LINEAR,
+				AddressU,
+				AddressV,
+				AddressW);
+		}
+
+		// Creates a default Minimum sampling object
+		static Sampler Minimum(
+			D3D12_TEXTURE_ADDRESS_MODE AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
+			D3D12_TEXTURE_ADDRESS_MODE AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER
+		)
+		{
+			return Create(D3D12_FILTER_MINIMUM_MIN_MAG_MIP_LINEAR,
+				AddressU,
+				AddressV,
+				AddressW);
+		}
+
 		// Creates a linear sampling object without mip levels.
 		static Sampler LinearWithoutMipMaps(
 			D3D12_TEXTURE_ADDRESS_MODE AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER,
@@ -5711,7 +5739,7 @@ namespace dx4xb {
 		/// <summary>
 		/// Gets the subresources from start mip taking count.
 		/// </summary>
-		gObj<Texture3D> SliceMips(int start, int count) const;
+		gObj<Texture3D> SliceMips(int start, int count = 1) const;
 
 		template<typename T>
 		void WriteElement(int tx, int ty, int tz, const T& value, int mip = 0) {
@@ -15620,10 +15648,23 @@ namespace dx4xb {
 		/// Updates a region of a single subresource from the gpu to mapped memory
 		/// </summary>
 		void FromGPU(gObj<ResourceView> singleSubresource, const D3D12_BOX& region);
+		
 		/// <summary>
 		/// Copies the content from one resource to another. Both resources must be compatible.
 		/// </summary>
-		void Copy(gObj<Texture2D> dst, gObj<Texture2D> src);
+		void Copy(gObj<ResourceView> dst, gObj<ResourceView> src);
+
+		/// <summary>
+		/// Copies the content from one buffer region to another buffer region.
+		/// </summary>
+		void Copy(gObj<Buffer> dst, int dstOffset, gObj<Buffer> src, int srcOffset, int numberOfBytes);
+
+		void Copy(gObj<Texture1D> dst, int dstX, gObj<Texture1D> src, int srcX, int texels);
+		
+		void Copy(gObj<Texture2D> dst, int dstX, int dstY, gObj<Texture2D> src, int srcX, int srcY, int texelsX, int texelsY);
+		
+		void Copy(gObj<Texture3D> dst, int dstX, int dstY, int dstZ, gObj<Texture3D> src, int srcX, int srcY, int srcZ, int texelsX, int texelsY, int texelsZ);
+
 	};
 
 	class ComputeManager : public CopyManager
@@ -15638,7 +15679,16 @@ namespace dx4xb {
 		// Sets a graphics pipeline
 		void SetPipeline(gObj<Pipeline> pipeline);
 
-		// Dispatches a specific number of threads to execute current compute shader set.
+		// Dispatches a specific number of threads into groups to execute current compute shader set.
+		template<int Group_Size_X = 1, int Group_Size_Y = 1, int Group_Size_Z = 1>
+		void Dispatch_Threads(int dimx, int dimy = 1, int dimz = 1) {
+			Dispatch(
+				(int)ceil(dimx / (float)Group_Size_X),
+				(int)ceil(dimy / (float)Group_Size_Y),
+				(int)ceil(dimz / (float)Group_Size_Z));
+		}
+
+		// Dispatches a specific number of thread groups to execute current compute shader set.
 		void Dispatch(int dimx, int dimy = 1, int dimz = 1);
 	};
 
@@ -16185,7 +16235,7 @@ namespace dx4xb {
 		/// </summary>
 		gObj<Texture2D> LoadTexture2D(dx4xb::string filePath);
 
-		gObj<Texture3D> LoadGrid(dx4xb::string filePath);
+		gObj<Texture3D> LoadGrid(dx4xb::string filePath, bool allocateMips = false);
 
 		gObj<Texture3D> LoadTexture3D(dx4xb::string filePath);
 

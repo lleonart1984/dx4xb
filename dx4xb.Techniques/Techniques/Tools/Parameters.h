@@ -11,6 +11,7 @@
 // Use skybox to show fancy scenes
 #define USE_SKYBOX
 
+
 // Max number of outside bounces allowed in a Pathtracer
 //#define MAX_PATHTRACING_BOUNCES 5
 #define MAX_PATHTRACING_BOUNCES 4
@@ -19,5 +20,8 @@
 
 #define SV_SIZE 16
 
+#define VOXEL_LOD 0
+
+#define VOXEL_SIZE (1 << VOXEL_LOD)
 
 #endif

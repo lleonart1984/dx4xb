@@ -159,13 +159,64 @@
     <ClInclude Include="Techniques\VolumePathtracing\VPT_SVAcc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Techniques\VolumePathtracing\ComputeMajorant.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="Techniques\VolumePathtracing\VPT_DDT_Strategy.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Techniques\VolumePathtracing\VPT_CF_Strategy.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VolMipMap_Pipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\ComputeCellInfo_Pipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VST_Base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VST_Hom_Base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\VST_Technique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\ComputeRadii_Pipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\CacheRadiiAndAverage_Pipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\MultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\LinearMultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumePathtracing\TestingLinearVolumeTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\BasePooling3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\AvePooling3DGeneric_CS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\MaxPooling3DGeneric_CS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\MinPooling3DGeneric_CS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\PoolingPipeline.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ML\Pooling\MipMap3DTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VPT\VST_Technique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VPT\LinearMultiscatteringModels.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
@@ -202,7 +253,21 @@
     <FxCompile Include="Techniques\VolumeRendering\ViewComplexity_CS.hlsl" />
     <FxCompile Include="Techniques\VolumeRendering\ComputeMajorant_CS.hlsl" />
     <FxCompile Include="Techniques\VolumePathtracing\VPT_NoAcc_DT_CS.hlsl" />
-    <FxCompile Include="Techniques\VolumePathtracing\ComputeMajorant_CS.hlsl" />
     <FxCompile Include="Techniques\VolumePathtracing\VPT_SV_DT_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\ComputeCellInfo_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\VolMipMap_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\VST_Hom_MC_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\ComputeRadii_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\CacheRadiiAndAverage_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\VST_Hom_CVAE_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumePathtracing\TestingGradientScattering_CS.hlsl" />
+    <FxCompile Include="Techniques\ML\Pooling\AvePooling3DFloat4_CS.hlsl" />
+    <FxCompile Include="Techniques\ML\Pooling\AvePooling3DFloat_CS.hlsl" />
+    <FxCompile Include="Techniques\ML\Pooling\MaxPooling3DFloat_CS.hlsl" />
+    <FxCompile Include="Techniques\ML\Pooling\MinPooling3DFloat_CS.hlsl" />
+    <FxCompile Include="Techniques\VPT\ComputeInitialGradients_CS.hlsl" />
+    <FxCompile Include="Techniques\VPT\LeastSquaresApproximation_CS.hlsl" />
+    <FxCompile Include="Techniques\VPT\VST_PT_CS.hlsl" />
+    <FxCompile Include="Techniques\VPT\ComputeRadii_CS.hlsl" />
   </ItemGroup>
 </Project>

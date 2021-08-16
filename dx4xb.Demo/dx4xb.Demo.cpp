@@ -23,6 +23,11 @@
 #include "Techniques/VolumeRendering/PathVisTechnique.h"
 
 #include "Techniques/VolumePathtracing/VPT_Technique.h"
+#include "Techniques/VolumePathtracing/VST_Technique.h"
+
+#include "Techniques/VolumePathtracing/TestingLinearVolumeTechnique.h"
+
+#include "Techniques/VPT/VST_Technique.h"
 
 using namespace dx4xb;
 
@@ -300,7 +305,10 @@ int main(int, char**)
 #endif
 
 	// Create the technique and load
-	gObj<VPT_Technique> technique = new VPT_Technique();
+	//gObj<VPT_Technique> technique = new VPT_Technique();
+	//gObj<VST_Technique> technique = new VST_Technique();
+	gObj<VST_GB_Technique> technique = new VST_GB_Technique();
+	//gObj<TestingLinearVolumeTechnique> technique = new TestingLinearVolumeTechnique();
 	//gObj<VPTTechnique> technique = new VPTTechnique();
 	//gObj<PathVisTechnique> technique = new PathVisTechnique();
 	//gObj<VPTRTTechnique> technique = new VPTRTTechnique();
@@ -321,6 +329,7 @@ int main(int, char**)
 	//gObj<SceneManager> scene = new LucyAndDrago3();
 	//gObj<SceneManager> scene = new CloudScene();
 	gObj<SceneManager> scene = new DisneyCloudScene();
+	//gObj<SceneManager> scene = new TestVolCloudScene();
 	//gObj<SceneManager> scene = new BunnySceneForPT();
 	//gObj<SceneManager> scene = new BunnyScene();
 	//gObj<SceneManager> scene = new BunnyCornellScene();
