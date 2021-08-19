@@ -50,12 +50,18 @@ struct ComputeRadiiPipeline : public ComputePipeline {
 	gObj<Texture3D> Parameters;
 	gObj<Texture3D> Radii;
 
+	struct RadiiComputationParameters {
+		float Threshold;
+		int StartLevel;
+	} Settings;
+
 	virtual void Bindings(gObj<ComputeBinder> binder) {
 		binder->OnDispatch();
 		binder->SRV(0, Grid);
 		binder->SRV(1, Gradients);
-		binder->UAV(0, Radii);
-		binder->UAV(1, Parameters);
+		binder->UAV(0, Parameters);
+		binder->UAV(1, Radii);
+		binder->CBV(0, Settings);
 		binder->SMP_Static(0, Sampler::Linear(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER)); // Grid Sampler
 		binder->SMP_Static(1, Sampler::Linear(D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP)); // gradient sampler
 	}
@@ -114,9 +120,9 @@ class VST_GB_Technique : public Technique, public IManageScene, public IGatherIm
 
 	gObj<MipMap3DTechnique> gridMipMapping;
 	gObj<MipMap3DTechnique> gradientMipMapping;
-	gObj<Texture3D> GradientField;
-	gObj<Texture3D> Grid;
 	gObj<Texture3D> Radii;
+	gObj<Texture3D> Parameters;
+	float errors[6] { 0.0, 0.005, 0.01, 0.02, 0.05, 0.1 };
 
 	gObj<ComputeInitialGradientsPipeline> initialGradientsPipeline;
 	gObj<ComputeRadiiPipeline> computingRadii;
@@ -165,11 +171,12 @@ public:
 
 			computingRadii->Gradients = initialGradientsPipeline->Gradients;
 			computingRadii->Grid = pipeline->Grid;
-			computingRadii->Parameters = CreateTexture3DUAV<float4>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth());
-			computingRadii->Radii = CreateTexture3DUAV<int>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth());
 
-			pipeline->Radii = computingRadii->Radii;
-			pipeline->Parameters = computingRadii->Parameters;
+			Parameters = CreateTexture3DUAV<float4>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth(), ARRAYSIZE(errors));
+			Radii = CreateTexture3DUAV<int>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth(), ARRAYSIZE(errors));
+
+			pipeline->Radii = Radii;
+			pipeline->Parameters = Parameters;
 
 			Load(gridMipMapping,
 				PoolingType::AveFloat,
@@ -248,11 +255,17 @@ public:
 			gradientMipMapping->BuildMipMaps(manager);
 
 			manager->SetPipeline(computingRadii);
-			manager->Dispatch_Threads<8, 8, 8>(
-				pipeline->Grid->Width(),
-				pipeline->Grid->Height(),
-				pipeline->Grid->Depth()
-				);
+			for (int i = 0; i < ARRAYSIZE(errors); i++)
+			{
+				computingRadii->Radii = Radii->SliceMips(i);
+				computingRadii->Parameters = Parameters->SliceMips(i);
+				computingRadii->Settings = { errors[i], i };
+				manager->Dispatch_Threads<8, 8, 8>(
+					computingRadii->Radii->Width(),
+					computingRadii->Radii->Height(),
+					computingRadii->Radii->Depth()
+					);
+			}
 
 		}
 

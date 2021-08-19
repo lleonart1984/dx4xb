@@ -2,9 +2,9 @@
 
 #include "..\Tools\Definitions.h"
 
-Texture3D<float> Grid			: register(t0); // Grid used in this pathtracer (average density and radius)
-Texture3D<float4> Parameters	: register(t1); 
-Texture3D<int> Radii			: register(t2); // Optimal radius
+Texture3D<float> Grid				: register(t0); // Grid used in this pathtracer (average density and radius)
+Texture3D<float4> Parameters		: register(t1);
+Texture3D<int> Radii				: register(t2); // Optimal radius
 
 cbuffer Camera : register(b0) {
 	float4x4 FromProjectionToWorld;
@@ -92,13 +92,14 @@ float SampleGrid(float3 P) {
 	return Grid[coordinate];
 }
 
-void SampleGridParametrization(float3 P, out float3 gradient, out float density, out float radius) {
+void SampleGridParametrization(float3 P, int level, out float3 gradient, out float density, out float radius) {
 	int3 dim;
 	Grid.GetDimensions(dim.x, dim.y, dim.z);
-	float3 coordinate = (P - Grid_Min) * dim / (Grid_Max - Grid_Min) + float3(random(), random(), random()) - 0.5;
-	gradient = Parameters[coordinate].xyz;
-	density = Parameters[coordinate].w;
-	radius = max(1, Radii[coordinate]);
+	int3 coordinate = (P - Grid_Min) * dim / ((1 << level) * (Grid_Max - Grid_Min)) + float3(random(), random(), random()) - 0.5;
+	float4 p = Parameters.mips[level][coordinate];
+	gradient = p.xyz;
+	density = p.w;
+	radius = max(1, Radii.mips[level][coordinate]);
 
 	//gradient = 0;
 	//density = Grid[coordinate];
@@ -143,7 +144,7 @@ float UnitaryHomogeneousSpherePathSample(float density, float albedo, float g, o
 		d = IntersectSphere(x, w);
 	}
 }
-#if 1
+#if 0
 float UnitaryLinearSpherePathSample(float3 gradient, float density, float albedo, float g, out float3 x, out float3 w)
 {
 	x = 0;
@@ -198,13 +199,17 @@ float UnitaryLinearSpherePathSample(float3 gradient, float density, float albedo
 			d = IntersectSphere(x, w);
 		}
 	}
-	else {
+	else 
+	{
 		x = w = float3(0, 0, 1);
 		float a = density;
 		float b = a * (1 + gradient.z);
 		float LT = exp(-(a - (a - b) * 0.5));
 		if (random() >= LT) // No scattering in linear media
+		{
 			GenerateNAPathWithModel(density, gradient, g, x, w);
+			scatters += pow(density, 2);
+		}
 		return 1;
 	}
 }
@@ -232,7 +237,7 @@ float PTStep(inout float3 x, inout float3 w)
 	return 1;
 }
 
-float SphereStep(inout float3 x, inout float3 w)
+float SphereStep(int level, inout float3 x, inout float3 w)
 {
 	int3 dim;
 	Grid.GetDimensions(dim.x, dim.y, dim.z);
@@ -242,7 +247,7 @@ float SphereStep(inout float3 x, inout float3 w)
 	float3 gradient;
 	float density;
 	float r;
-	SampleGridParametrization(x, gradient, density, r);
+	SampleGridParametrization(x, level, gradient, density, r);
 	
 	r /= (float)maxDim; // from Grid to world
 
@@ -263,7 +268,7 @@ float SphereStep(inout float3 x, inout float3 w)
 		GetComponent(ScatteringAlbedo),
 		GetComponent(G), xs, ws);
 
-	scatters += ws.z < 0.999;
+	//scatters += ws.z < 0.999;
 
 	xs = mul(xs, fromSphereToGrid);
 	ws = mul(ws, fromSphereToGrid);
@@ -351,13 +356,13 @@ float Pathtrace(float3 x, float3 w)
 
 		//if (scatters < 5)
 		{
-			//T *= PTStep(x, w);
-			//complexity++;
+			/*T *= PTStep(x, w);
+			complexity++;*/
 		}
 		//else
 		{
-		//	int level = min(7, log(max(1, scatters * 0.5 - 5)));
-			T *= SphereStep(x, w);
+			int level = min(5, log(max(1, scatters))*0.2);
+			T *= SphereStep(level, x, w);
 			complexity++;
 		}
 

@@ -32,9 +32,9 @@
 using namespace dx4xb;
 
 
-#define USE_GUI
-//#define SAVE_STATS
-//#define OFFLINE
+//#define USE_GUI
+#define SAVE_STATS
+#define OFFLINE
 
 #ifdef USE_GUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
