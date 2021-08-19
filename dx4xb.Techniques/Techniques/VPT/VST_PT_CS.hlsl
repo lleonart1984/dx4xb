@@ -361,9 +361,10 @@ float Pathtrace(float3 x, float3 w)
 		}
 		//else
 		{
-			int level = min(5, log(max(1, scatters))*0.2);
+			int level = min(5, log(max(1, scatters))*0.5);
 			T *= SphereStep(level, x, w);
-			complexity++;
+			if (level == 3)
+				complexity+=exp(level);
 		}
 
 		if (T < 0.00001)

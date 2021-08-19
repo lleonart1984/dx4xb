@@ -1,71 +1,45 @@
-Texture3D<float> Grid : register(t0);
-Texture3D<float3> Gradients : register(t1);
-RWTexture3D<float4> Parameters : register(u0);
+Texture3D<float> Grid			: register(t0);
+RWTexture3D<float4> Parameters	: register(u0);
+RWTexture3D<float> Errors		: register(u1);
 
-cbuffer LevelInfo : register(b0) {
-	int Level;
-};
-
-#include "..\Tools\Parameters.h"
-
-float Phi_0(float t) {
-	return 1;
-}
-
-float Phi_1(float t) {
-	return t;
-}
-
-float Phi_2(float t) {
-	return 0;// (5 * t * t * t - 3 * t) * 0.5;
-}
-
+sampler LinearSampler :  register(s0);
 
 [numthreads(8, 8, 8)]
 void main(uint3 DTid : SV_DispatchThreadID)
 {
-	float3 grad = Gradients[DTid];
-	grad = length(grad) > 0.001 ? normalize(grad) : float3(0, 0, 1);
-	float3 Q = float3(1, 3, 7);
-	int size = VOXEL_SIZE * (1 << Level);
-	float totalWeight = 0;
+	float4 Q = float4(3/8, 3/8, 3/8, 1);
+	
+	int3 dim;
+	Grid.GetDimensions(dim.x, dim.y, dim.z);
 
-	float3 parameters = 0;
-	for (int z = 0; z < size; z++)
-		for (int y = 0; y < size; y++)
-			for (int x = 0; x < size; x++)
+	float4 parameters = 0;
+	for (int z = -1; z <= 1; z++)
+		for (int y = -1; y <= 1; y++)
+			for (int x = -1; x <= -1; x++)
 			{
-				float3 pos = 2 * ((float3(x, y, z) + 0.5) / size) - 1;
-				//if (length(pos) <= 1) 
-				{
-					float Y = Grid[DTid * size + int3(x, y, z)];
-					float t = dot(pos, grad);
-					float3 phi = float3(Phi_0(t), Phi_1(t), Phi_2(t));
-					float w = 1;// pow(abs(t), 2);
-					parameters += phi * Y * Q * w;
-					totalWeight += w;
-				}
+				float3 pos = float3(x, y, z) * 0.66666;
+				float3 coord = (DTid + 0.5 + pos) / dim;
+				float Y = Grid.SampleLevel(LinearSampler, coord, 0);
+				float4 phi = float4(pos.x, pos.y, pos.z, 1);
+				parameters += phi * Y * Q;
 			}
 
-	parameters /= totalWeight;
+	parameters /= 27;
 
 	float error = 0;
-	for (int z = 0; z < size; z++)
-		for (int y = 0; y < size; y++)
-			for (int x = 0; x < size; x++)
+	for (int z = -1; z <= 1; z++)
+		for (int y = -1; y <= 1; y++)
+			for (int x = -1; x <= -1; x++)
 			{
-				float3 pos = 2 * ((float3(x, y, z) + 0.5) / size) - 1;
-				//if (length(pos) <= 1) 
-				{
-					float Y = Grid[DTid * size + int3(x, y, z)];
-					float t = dot(pos, grad);
-					float3 phi = float3(Phi_0(t), Phi_1(t), Phi_2(t));
-					float w = 1;// pow(abs(t), 2);
-					error += size * pow((dot(phi, parameters) - Y), 2) * w;
-				}
+				float3 pos = float3(x, y, z) * 0.66666;
+				float3 coord = (DTid + 0.5 + pos) / dim;
+				float Y = Grid.SampleLevel(LinearSampler, coord, 0);
+				float4 phi = float4(pos.x, pos.y, pos.z, 1);
+				error += pow(Y - dot(phi, parameters), 2);
 			}
 
-	error /= totalWeight;
+	error /= 27;
 
-	Parameters[DTid] = float4(parameters, error);
+	Parameters[DTid] = parameters;
+	Errors[DTid] = error;
 }

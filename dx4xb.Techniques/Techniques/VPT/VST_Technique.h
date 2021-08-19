@@ -5,20 +5,20 @@
 
 using namespace dx4xb;
 
-struct ComputeInitialGradientsPipeline : public ComputePipeline {
-	void Setup() {
-		set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VPT\\ComputeInitialGradients_CS.cso"));
-	}
-
-	gObj<Texture3D> Grid;
-	gObj<Texture3D> Gradients;
-
-	virtual void Bindings(gObj<ComputeBinder> binder) {
-		binder->OnDispatch();
-		binder->SRV(0, Grid);
-		binder->UAV(0, Gradients);
-	}
-};
+//struct ComputeInitialGradientsPipeline : public ComputePipeline {
+//	void Setup() {
+//		set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VPT\\ComputeInitialGradients_CS.cso"));
+//	}
+//
+//	gObj<Texture3D> Grid;
+//	gObj<Texture3D> Gradients;
+//
+//	virtual void Bindings(gObj<ComputeBinder> binder) {
+//		binder->OnDispatch();
+//		binder->SRV(0, Grid);
+//		binder->UAV(0, Gradients);
+//	}
+//};
 
 //struct ComputeParametersPipeline : public ComputePipeline {
 //	void Setup() {
@@ -46,7 +46,6 @@ struct ComputeRadiiPipeline : public ComputePipeline {
 	}
 
 	gObj<Texture3D> Grid;
-	gObj<Texture3D> Gradients;
 	gObj<Texture3D> Parameters;
 	gObj<Texture3D> Radii;
 
@@ -58,12 +57,10 @@ struct ComputeRadiiPipeline : public ComputePipeline {
 	virtual void Bindings(gObj<ComputeBinder> binder) {
 		binder->OnDispatch();
 		binder->SRV(0, Grid);
-		binder->SRV(1, Gradients);
 		binder->UAV(0, Parameters);
 		binder->UAV(1, Radii);
 		binder->CBV(0, Settings);
 		binder->SMP_Static(0, Sampler::Linear(D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER, D3D12_TEXTURE_ADDRESS_MODE_BORDER)); // Grid Sampler
-		binder->SMP_Static(1, Sampler::Linear(D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP)); // gradient sampler
 	}
 };
 
@@ -119,12 +116,12 @@ struct VPT_Pipeline : public ComputePipeline {
 class VST_GB_Technique : public Technique, public IManageScene, public IGatherImageStatistics {
 
 	gObj<MipMap3DTechnique> gridMipMapping;
-	gObj<MipMap3DTechnique> gradientMipMapping;
+	//gObj<MipMap3DTechnique> gradientMipMapping;
 	gObj<Texture3D> Radii;
 	gObj<Texture3D> Parameters;
 	float errors[6] { 0.0, 0.005, 0.01, 0.02, 0.05, 0.1 };
 
-	gObj<ComputeInitialGradientsPipeline> initialGradientsPipeline;
+	//gObj<ComputeInitialGradientsPipeline> initialGradientsPipeline;
 	gObj<ComputeRadiiPipeline> computingRadii;
 	//gObj<ComputeParametersPipeline> parametersPipeline;
 	gObj<VPT_Pipeline> pipeline;
@@ -158,7 +155,7 @@ public:
 
 		auto desc = scene->getScene();
 
-		Load(initialGradientsPipeline); // initial gradients
+		//Load(initialGradientsPipeline); // initial gradients
 		//Load(parametersPipeline);
 		Load(computingRadii);
 		Load(pipeline);
@@ -166,10 +163,10 @@ public:
 		if (desc->getGrids().Count > 0) {
 			pipeline->Grid = LoadGrid(desc->getGrids().Data[0], true);
 		
-			initialGradientsPipeline->Grid = pipeline->Grid;
-			initialGradientsPipeline->Gradients = CreateTexture3DUAV<float4>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth(), 0);
+			//initialGradientsPipeline->Grid = pipeline->Grid;
+			//initialGradientsPipeline->Gradients = CreateTexture3DUAV<float4>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth(), 0);
 
-			computingRadii->Gradients = initialGradientsPipeline->Gradients;
+			//computingRadii->Gradients = initialGradientsPipeline->Gradients;
 			computingRadii->Grid = pipeline->Grid;
 
 			Parameters = CreateTexture3DUAV<float4>(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth(), ARRAYSIZE(errors));
@@ -183,10 +180,10 @@ public:
 				int3(pipeline->Grid->Width(), pipeline->Grid->Height(), pipeline->Grid->Depth())
 			); // build grid mipmap
 
-			Load(gradientMipMapping,
-				PoolingType::AveFloat4,
-				int3(initialGradientsPipeline->Gradients->Width(), initialGradientsPipeline->Gradients->Height(), initialGradientsPipeline->Gradients->Depth())
-			); // build gradient mipmap
+			//Load(gradientMipMapping,
+			//	PoolingType::AveFloat4,
+			//	int3(initialGradientsPipeline->Gradients->Width(), initialGradientsPipeline->Gradients->Height(), initialGradientsPipeline->Gradients->Depth())
+			//); // build gradient mipmap
 
 			//parametersPipeline->Parameters = pipeline->Parameters;
 			//parametersPipeline->Gradients = pipeline->Gradients;
@@ -241,18 +238,18 @@ public:
 		if (+(elements & SceneElement::Textures)) {
 			manager->ToGPU(pipeline->Grid);
 
-			manager->SetPipeline(initialGradientsPipeline);
+			/*manager->SetPipeline(initialGradientsPipeline);
 			manager->Dispatch_Threads<8, 8, 8>(
 				initialGradientsPipeline->Gradients->Width(),
 				initialGradientsPipeline->Gradients->Height(),
 				initialGradientsPipeline->Gradients->Depth()
-				);
+				);*/
 
 			gridMipMapping->Grid = pipeline->Grid;
 			gridMipMapping->BuildMipMaps(manager);
 
-			gradientMipMapping->Grid = initialGradientsPipeline->Gradients;
-			gradientMipMapping->BuildMipMaps(manager);
+			/*gradientMipMapping->Grid = initialGradientsPipeline->Gradients;
+			gradientMipMapping->BuildMipMaps(manager);*/
 
 			manager->SetPipeline(computingRadii);
 			for (int i = 0; i < ARRAYSIZE(errors); i++)
