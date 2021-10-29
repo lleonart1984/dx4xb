@@ -22,16 +22,16 @@ void main( uint3 DTid : SV_DispatchThreadID )
 
 	int max_levels = 8;
 
-	if (StartLevel == 0)
+	//if (StartLevel == 0)
 	{
-		Radii[DTid] = 1;
-		Parameters[DTid] = float4(0, 0, 0, Grid[DTid]);
+		Radii[DTid] = 1 << StartLevel;
+		Parameters[DTid] = float4(0, 0, 0, Grid.mips[StartLevel][DTid]);
 	}
 
 	for (int level = max(1, StartLevel); level < max_levels; level++)
 	{
 		float error = 0;
-		float4 Q = float4(3 / 8, 3 / 8, 3 / 8, 1);
+		float4 Q = float4(3, 3, 3, 1);
 		float4 parameters = 0;
 		for (int z = -1; z <= 1; z++)
 			for (int y = -1; y <= 1; y++)

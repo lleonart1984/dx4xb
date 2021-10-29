@@ -219,6 +219,9 @@
     <ClInclude Include="Techniques\VPT\LinearMultiscatteringModels.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\VolumeReconstruction\VolumeReconstructionTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -269,5 +272,9 @@
     <FxCompile Include="Techniques\VPT\LeastSquaresApproximation_CS.hlsl" />
     <FxCompile Include="Techniques\VPT\VST_PT_CS.hlsl" />
     <FxCompile Include="Techniques\VPT\ComputeRadii_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeReconstruction\View_Reconstruction_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeReconstruction\ZeroGrad_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeReconstruction\ForwardBackward_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeReconstruction\OptimizerStep_CS.hlsl" />
   </ItemGroup>
 </Project>

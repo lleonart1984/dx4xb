@@ -39,3 +39,15 @@ float3 ImportanceSamplePhase(float GFactor, float3 D) {
 	return sinTheta * sin(phi) * t0 + sinTheta * cos(phi) * t1 +
 		cosTheta * D;
 }
+
+
+float3 ImportanceSamplePhase(float GFactor, float3 D, float xi1, float xi2) {
+	float phi = xi1 * 2 * pi;
+	float cosTheta = abs(GFactor) < 0.001 ? 2*xi2 - 1 : invertcdf(GFactor, xi2);
+	float sinTheta = sqrt(max(0, 1.0f - cosTheta * cosTheta));
+	float3 t0, t1;
+	CreateOrthonormalBasis(D, t0, t1);
+	return sinTheta * sin(phi) * t0 + sinTheta * cos(phi) * t1 +
+		cosTheta * D;
+}
+

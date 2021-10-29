@@ -29,6 +29,8 @@
 
 #include "Techniques/VPT/VST_Technique.h"
 
+#include "Techniques/VolumeReconstruction/VolumeReconstructionTechnique.h"
+
 using namespace dx4xb;
 
 
@@ -95,6 +97,78 @@ public:
 		byte* data = new byte[dataSize];
 		TextureToSave->Read(data);
 		fwrite((void*)data, 1, dataSize, writting);
+		fclose(writting);
+		delete[] data;
+	}
+};
+
+class RaysSavingsTechnique : public Technique {
+public:
+	gObj<Texture2D> TextureToSave;
+
+	float ScaledBy = 1.0f;
+
+	dx4xb::string FileName;
+
+	Camera camera;
+
+	void OnLoad() {
+	}
+
+	void CopyImageFromGPU(gObj<GraphicsManager> manager) {
+		manager->FromGPU(TextureToSave);
+	}
+
+	virtual void OnDispatch() override {
+		Execute_OnGPU(CopyImageFromGPU);
+		Flush().WaitFor();
+
+		FILE* writting;
+		if (fopen_s(&writting, FileName.c_str(), "wb") != 0)
+			return;
+
+		int dataSize = TextureToSave->Width() * TextureToSave->Height() * TextureToSave->ElementStride();
+		byte* data = new byte[dataSize];
+		TextureToSave->Read(data);
+
+		int width = TextureToSave->Width();
+		int height = TextureToSave->Height();
+
+		// Write image size
+		fwrite((void*)&width, 4, 1, writting);
+		fwrite((void*)&height, 4, 1, writting);
+
+		float4x4 view, proj;
+		camera.GetMatrices(width, height, view, proj);
+		float4x4 fromProjToWorld = mul(inverse(proj), inverse(view));
+
+		int pixeloffset = 0;
+		// for each pixel build a ray.
+		for (int py = 0; py < height; py++)
+			for (int px = 0; px < width; px++) {
+				float4 ndcP = float4(2 * (px + 0.5) / width - 1, 2 * (py + 0.5) / height - 1, 0, 1);
+				ndcP.y *= -1;
+				float4 ndcT = ndcP + float4(0, 0, 1, 0);
+
+				float4 viewP = mul(ndcP, fromProjToWorld);
+				viewP = viewP / viewP.w;
+				float4 viewT = mul(ndcT, fromProjToWorld);
+				viewT = viewT / viewT.w;
+
+				float3 O = viewP.get_xyz();
+				float3 D = normalize(viewT.get_xyz() - viewP.get_xyz());
+
+				fwrite((void*)&O, 4, 3, writting); // origin
+				fwrite((void*)&D, 4, 3, writting); // direction
+
+				float4 radiance = *(float4*)&data[pixeloffset];
+				radiance = radiance * ScaledBy;
+
+				fwrite((void*)&radiance, 4, 4, writting);
+
+				pixeloffset += 4 * 4;
+			}
+
 		fclose(writting);
 		delete[] data;
 	}
@@ -304,10 +378,13 @@ int main(int, char**)
 
 #endif
 
+	// NEW TECHNIQUES FOR RECONSTRUCTION
+	gObj<VolumeReconstructionTechnique> technique = new VolumeReconstructionTechnique();
+
 	// Create the technique and load
 	//gObj<VPT_Technique> technique = new VPT_Technique();
 	//gObj<VST_Technique> technique = new VST_Technique();
-	gObj<VST_GB_Technique> technique = new VST_GB_Technique();
+	//gObj<VST_GB_Technique> technique = new VST_GB_Technique();
 	//gObj<TestingLinearVolumeTechnique> technique = new TestingLinearVolumeTechnique();
 	//gObj<VPTTechnique> technique = new VPTTechnique();
 	//gObj<PathVisTechnique> technique = new PathVisTechnique();
@@ -323,7 +400,7 @@ int main(int, char**)
 	//gObj<STFXTechnique> technique = new STFXTechnique();
 
 	gObj<ScreenShotTechnique> takingScreenshot;
-	gObj<ImageSavingTechnique> savingStats;
+	gObj<RaysSavingsTechnique> savingStats;
 
 	//gObj<SceneManager> scene = new BuddhaScene();
 	//gObj<SceneManager> scene = new LucyAndDrago3();
@@ -453,14 +530,17 @@ int main(int, char**)
 					char number[100];
 					_itoa_s(frames, number, 10);
 					//_itoa_s(animationFrame, number, 10);
-					dx4xb::string fileName = "./Cloud/save_";
+					dx4xb::string fileName = "./Cloud4Rec/save_";
 					fileName = fileName + dx4xb::string(number);
 
 					takingScreenshot->FileName = fileName + dx4xb::string(".png");
 					presenter->ExecuteTechnique(takingScreenshot);
 
+					savingStats->ScaledBy = 1.0f / frames;
+
 					savingStats->FileName = fileName + dx4xb::string("_sum.bin");
 					savingStats->TextureToSave = sumTexture;
+					savingStats->camera = scene->getCamera();
 					presenter->ExecuteTechnique(savingStats); // saving sum
 
 					savingStats->FileName = fileName + dx4xb::string("_sqrSum.bin");

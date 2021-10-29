@@ -95,16 +95,17 @@ float SampleGrid(float3 P) {
 void SampleGridParametrization(float3 P, int level, out float3 gradient, out float density, out float radius) {
 	int3 dim;
 	Grid.GetDimensions(dim.x, dim.y, dim.z);
-	int3 coordinate = (P - Grid_Min) * dim / ((1 << level) * (Grid_Max - Grid_Min)) + float3(random(), random(), random()) - 0.5;
+	int3 coordinate = (P - Grid_Min) * dim / ((1 << level) * (Grid_Max - Grid_Min));// +float3(random(), random(), random()) - 0.5;
 	float4 p = Parameters.mips[level][coordinate];
 	gradient = p.xyz;
 	density = p.w;
-	radius = max(1, Radii.mips[level][coordinate]);
+	radius = max(1, Radii.mips[level][coordinate])*0.6666;
 
 	//gradient = 0;
 	//density = Grid[coordinate];
 	//radius = 1;
 }
+
 
 float GetComponent(float3 radiance) {
 	return radiance[NumberOfPasses % 3];
@@ -117,6 +118,80 @@ float GridExit(float3 x, float3 w)
 	float2x3 T = abs(D2) <= 0.000001 ? float2x3(float3(-1000, -1000, -1000), float3(1000, 1000, 1000)) : C / D2;
 	return min(min(max(T._m00, T._m10), max(T._m01, T._m11)), max(T._m02, T._m12));
 }
+
+float ComputeTransmittance(float3 x, float3 w, int level) {
+	int3 dim;
+	Grid.GetDimensions(dim.x, dim.y, dim.z);
+	int maxDim = max(dim.x, max(dim.y, dim.z));
+
+	float d = GridExit(x, w);
+	float T = 1;
+	float levelValue = level;
+	float pdf = 1;
+
+	while (d > 0) {
+		float3 gradient;
+		float density;
+		float r;
+		SampleGridParametrization(x, (int)levelValue, gradient, density, r);
+		r /= (float)maxDim; // from Grid to world
+
+		float a = density * GetComponent(Extinction) * r;
+		float b = a * (1 + dot(gradient, w));
+		T *= exp(-(a - (a - b) * 0.5));
+
+		if (T < 0.1) {
+			if (random() < 0.5)
+				return 0;
+			pdf *= 0.5;
+		}
+
+		x += w * r;
+		d -= r;
+		levelValue = min(5, levelValue + a > 0 ? 0.1 : 0);
+	}
+	return T / pdf;
+}
+
+float DTTransmittance2(float3 x, float3 w) {
+	int3 dim;
+	Grid.GetDimensions(dim.x, dim.y, dim.z);
+	int maxDim = max(dim.x, max(dim.y, dim.z));
+
+	float d = GridExit(x, w);
+	float T = 1;
+	float pdf = 1;
+
+	while (d > 0) {
+		float t = -log(1 - random()) / GetComponent(Extinction);
+		float density = SampleGrid(x);
+		T *= (1 - density);
+		if (T < 0.1)
+		{
+			if (random() < 0.9)
+				return 0;
+			pdf *= (1 - 0.9);
+		}
+		d -= t;
+	}
+	return T / pdf;
+}
+
+float DTTransmittance(float3 x, float3 w) {
+	int3 dim;
+	Grid.GetDimensions(dim.x, dim.y, dim.z);
+	int maxDim = max(dim.x, max(dim.y, dim.z));
+	float d = GridExit(x, w);
+	while (d > 0) {
+		float t = -log(1 - random()) / GetComponent(Extinction);
+		float density = SampleGrid(x);
+		if (random() < density)
+			return 0;
+		d -= t;
+	}
+	return 1;
+}
+
 
 float IntersectSphere(float3 x, float3 w)
 {
@@ -208,7 +283,7 @@ float UnitaryLinearSpherePathSample(float3 gradient, float density, float albedo
 		if (random() >= LT) // No scattering in linear media
 		{
 			GenerateNAPathWithModel(density, gradient, g, x, w);
-			scatters += pow(density, 2);
+			scatters += exp(density);
 		}
 		return 1;
 	}
@@ -345,31 +420,55 @@ float3 GetColorForError(float complexity) {
 float Pathtrace(float3 x, float3 w)
 {
 	float T = 1;
+	float Acc = 0;
 
 	while (true) {
 
 		float tMin, tMax;
 		if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
-			return T * GetComponent(SampleSkybox(x, w) + SampleLight(w));
+			return Acc + T * GetComponent(SampleSkybox(x, w) + SampleLight(w));
 
 		x += w * tMin;
 
+		float3 win = w;
+		float3 xin = x;
+
 		//if (scatters < 5)
 		{
-			/*T *= PTStep(x, w);
-			complexity++;*/
+			//T *= PTStep(x, w);
+			//complexity++;
 		}
 		//else
 		{
-			int level = min(5, log(max(1, scatters))*0.5);
+			int level = min(5, log(max(1, scatters)) * 0.6);
 			T *= SphereStep(level, x, w);
-			if (level == 3)
+			if (level == 5)
 				complexity+=exp(level);
 		}
 
+		if (any(w != win)) // scatter occured
+		{
+			float PENV = 0.01;
+			bool lightSource = random() < PENV;
+			float3 sampleDir = lightSource ? randomDirection(w) : LightDirection;
+			float samplePdf = lightSource ? PENV : (1 - PENV);
+			float3 envColor = lightSource ? SampleSkybox(x, sampleDir) : LightIntensity * 0.25 / pi;
+			//Acc += DTTransmittance(xin, sampleDir) * EvalPhase(GetComponent(G), win, sampleDir) * envColor / samplePdf / (4 * pi);
+			Acc += ComputeTransmittance(xin, sampleDir, 0) * EvalPhase(GetComponent(G), win, sampleDir) * envColor / samplePdf / (4 * pi);
+		}
+
 		if (T < 0.00001)
-			return 0;
+			return Acc;
 	}
+}
+
+float Transmittance(float3 x, float3 w) {
+	float tMin, tMax;
+	if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
+		return GetComponent(SampleSkybox(x, w) + SampleLight(w));
+
+	x += w * tMin;
+	return ComputeTransmittance(x, w, 0) * GetComponent(SampleSkybox(x, w) + SampleLight(w));
 }
 
 [numthreads(32, 32, 1)]
@@ -399,6 +498,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	float3 radiance = 0;
 	//float value = FirstHit(O, D);
 	float value = Pathtrace(O, D);
+	//float value = Transmittance(O, D);
 	radiance[NumberOfPasses % 3] = 3 * value;
 
 	AccumulateOutput(DTid.xy, radiance, complexity);

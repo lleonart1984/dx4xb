@@ -1257,11 +1257,13 @@ public:
 	}
 	~DisneyCloudScene() {}
 
+	int cameraIndex = 5;
+
 	void SetupScene() {
 
 		//<lookat target = "6.021, 100.043, -43.679" origin = "648.064, -82.473, -63.856" up = "0.273, 0.962, -0.009" / >
 		camera.FoV = 54.43 * PI / 180;
-		//camera.Position = float3(0, 0, 4);
+		//camera.Position = float3(sin(cameraIndex*2*3.14159/6), 0, cos(cameraIndex * 2 * 3.14159 / 6));
 		camera.Position = float3(648.064, -82.473, -63.856)/600 - float3(-9.984, 73.008, -42.64) / 600;
 		//camera.Target = float3(0, 0, 0);
 		camera.Target = float3(6.021, 100.043, -43.679)/ 600 - float3(-9.984, 73.008, -42.64) / 600;
@@ -1277,7 +1279,8 @@ public:
 
 		lights[0].Direction = normalize(float3(0.5826, 0.7660, 0.2717)); // Disney set
 		//lights[0].Direction = normalize(float3(0, 0, -1));
-		lights[0].Intensity = float3(2.6, 2.5, 2.3)*1;
+		lights[0].Intensity = 3;
+		//lights[0].Intensity = float3(2.6, 2.5, 2.3)*1;
 		//lights[0].Intensity = float3(2.8, 2.7, 2.3)*3;
 
 		dx4xb::string desktopPath = desktop_directory();
@@ -1293,9 +1296,9 @@ public:
 		int gridIndex = scene->appendGrid(gridPath);
 		scene->appendMaterial(SceneMaterial());
 		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
-				float3(1, 1, 1) * 1024, // sigma
+				float3(1, 1, 1) * 100, // sigma
 				float3(1, 1, 1),
-				float3(0.875, 0.875, 0.875)
+				float3(0.875, 0.875, 0.875)*0.3
 			});
 
 		//<shape type = "cube">

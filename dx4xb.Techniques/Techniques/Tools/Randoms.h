@@ -41,6 +41,31 @@ float random() {
 	return HybridTaus();
 }
 
+float4 randoms_by_seed(int seed) {
+	uint4 rng_state = { seed, seed, seed, seed };
+
+	// move the rgn from the initial states
+	for (int i = 0; i < 10 + (seed^127)%7; i++) {
+		rng_state.x = TausStep(rng_state.x, 13, 19, 12, 4294967294);
+		rng_state.y = TausStep(rng_state.y, 2, 25, 4, 4294967288);
+		rng_state.z = TausStep(rng_state.z, 3, 11, 17, 4294967280);
+		rng_state.w = LCGStep(rng_state.w, 1664525, 1013904223);
+	}
+
+	float4 xi = 0;
+
+	for (int c = 0; c < 4; c++) {
+		rng_state.x = TausStep(rng_state.x, 13, 19, 12, 4294967294);
+		rng_state.y = TausStep(rng_state.y, 2, 25, 4, 4294967288);
+		rng_state.z = TausStep(rng_state.z, 3, 11, 17, 4294967280);
+		rng_state.w = LCGStep(rng_state.w, 1664525, 1013904223);
+
+		xi[c] = 2.3283064365387e-10 * (rng_state.x ^ rng_state.y ^ rng_state.z ^ rng_state.w);
+	}
+
+	return xi;
+}
+
 void AttachToRandomSequence(uint2 index) {
 	RNG__INDEX = index;
 }

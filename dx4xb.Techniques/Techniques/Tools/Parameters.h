@@ -9,7 +9,7 @@
 #define NO_DRAW_LIGHT_SOURCE
 
 // Use skybox to show fancy scenes
-#define USE_SKYBOX 
+//#define USE_SKYBOX 
 
 
 // Max number of outside bounces allowed in a Pathtracer

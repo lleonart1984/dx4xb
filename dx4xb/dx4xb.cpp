@@ -3073,39 +3073,17 @@ namespace dx4xb {
 		if (cpuaccess == CPUAccessibility::Write) // writable resource dont need to update.
 			return;
 
-		switch (desc.Dimension)
-		{
-		case D3D12_RESOURCE_DIMENSION_BUFFER:
-			cmdList->CopyBufferRegion(resource, view->arrayStart * elementStride, uploading, view->arrayStart * elementStride, view->arrayCount * elementStride);
-			break;
-		case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
-		{
-			for (int m = 0; m < view->mipCount; m++)
+		if (uploading)
+			switch (desc.Dimension)
 			{
-				int index = m + view->mipStart;
-
-				auto subresourceFootprint = pLayouts[index].Footprint;
-
-				D3D12_TEXTURE_COPY_LOCATION dstData;
-				dstData.pResource = resource;
-				dstData.SubresourceIndex = index;
-				dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-
-				D3D12_TEXTURE_COPY_LOCATION srcData;
-				srcData.pResource = uploading;
-				srcData.PlacedFootprint = pLayouts[index];
-				srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-
-				cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
-			}
-			break;
-		}
-		default:
-		{	// Update slice region from uploading version to resource.
-			for (int a = 0; a < view->arrayCount; a++)
+			case D3D12_RESOURCE_DIMENSION_BUFFER:
+				cmdList->CopyBufferRegion(resource, view->arrayStart * elementStride, uploading, view->arrayStart * elementStride, view->arrayCount * elementStride);
+				break;
+			case D3D12_RESOURCE_DIMENSION_TEXTURE3D:
+			{
 				for (int m = 0; m < view->mipCount; m++)
 				{
-					int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+					int index = m + view->mipStart;
 
 					auto subresourceFootprint = pLayouts[index].Footprint;
 
@@ -3121,9 +3099,32 @@ namespace dx4xb {
 
 					cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
 				}
-			break;
-		}
-		}
+				break;
+			}
+			default:
+			{	// Update slice region from uploading version to resource.
+				for (int a = 0; a < view->arrayCount; a++)
+					for (int m = 0; m < view->mipCount; m++)
+					{
+						int index = (view->arrayStart + a) * (desc.MipLevels) + m + view->mipStart;
+
+						auto subresourceFootprint = pLayouts[index].Footprint;
+
+						D3D12_TEXTURE_COPY_LOCATION dstData;
+						dstData.pResource = resource;
+						dstData.SubresourceIndex = index;
+						dstData.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+
+						D3D12_TEXTURE_COPY_LOCATION srcData;
+						srcData.pResource = uploading;
+						srcData.PlacedFootprint = pLayouts[index];
+						srcData.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+
+						cmdList->CopyTextureRegion(&dstData, 0, 0, 0, &srcData, nullptr);
+					}
+				break;
+			}
+			}
 	}
 
 	void dx4xb::wResource::ReadFromMapped(byte* data, wResourceView* view, bool flipRows)

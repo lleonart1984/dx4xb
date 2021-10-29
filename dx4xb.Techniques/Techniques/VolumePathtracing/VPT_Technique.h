@@ -3,8 +3,8 @@ class VPT_Technique : public Technique, public IManageScene, public IGatherImage
 	struct VPT_Pipeline : public ComputePipeline {
 
 		void Setup() {
-			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_SV_DT_CS.cso"));
-			//set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_NoAcc_DT_CS.cso"));
+			//set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_SV_DT_CS.cso"));
+			set->ComputeShader(ShaderLoader::FromFile(".\\Techniques\\VolumePathtracing\\VPT_NoAcc_DT_CS.cso"));
 		}
 
 		gObj<Texture3D> Grid;

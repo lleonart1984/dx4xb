@@ -6,7 +6,7 @@ float Pathtrace(float3 x, float3 w) {
 	float tMin, tMax;
 	if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
 #ifdef NO_DRAW_LIGHT_SOURCE
-		return GetComponent(SampleSkybox(x, w) + SampleLight(w));
+		return GetComponent(SampleSkybox(x, w));
 #else
 		return GetComponent(SampleSkybox(x, w) + SampleLight(w));
 #endif
@@ -22,11 +22,13 @@ float Pathtrace(float3 x, float3 w) {
 			0.5 * density
 	};
 
+	float3 win = w;
+
 	float T = BoxTransmittance(box, x, w);
 
 	float3 sky = SampleSkybox(x, w);
 #ifdef NO_DRAW_LIGHT_SOURCE
-	return T * GetComponent(sky + SampleLight(w));
+	return T * GetComponent(sky + any(win - w) * SampleLight(w)); // any scatter
 #else
 	return T * GetComponent(sky + SampleLight(w));
 #endif

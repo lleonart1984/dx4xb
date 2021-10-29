@@ -119,7 +119,8 @@ class VST_GB_Technique : public Technique, public IManageScene, public IGatherIm
 	//gObj<MipMap3DTechnique> gradientMipMapping;
 	gObj<Texture3D> Radii;
 	gObj<Texture3D> Parameters;
-	float errors[6] { 0.0, 0.005, 0.01, 0.02, 0.05, 0.1 };
+	float errors[6]{ 0.0, 0.00, 0.0, 0.0, 0.0, 0.0 };
+	//float errors[6] { 0.0, 0.005, 0.01, 0.02, 0.05, 0.1 };
 
 	//gObj<ComputeInitialGradientsPipeline> initialGradientsPipeline;
 	gObj<ComputeRadiiPipeline> computingRadii;
