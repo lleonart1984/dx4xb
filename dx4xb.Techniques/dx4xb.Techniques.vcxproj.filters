@@ -1,0 +1,154 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\CVAEScatteringModelX.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\NEECVAEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\SphereTracingBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STBase_RT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STFTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\STFXTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\NEEPathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingCommon_RT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Pathtracing\PathtracingTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonComplexity.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonEnvironment.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonPT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\CommonRT.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Definitions.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Distances.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\HGPhaseFunction.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Parameters.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Randoms.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Tools\Scattering.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="gui_traits.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Examples\BasicRaycastSample.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Examples\BasicSceneTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Examples\ClearRTSampleTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Examples\DemoTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\Examples\DepthComplexityTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\VPTBase_CS.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\VPTTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\MultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\CVAEPathtracing\MultiscatteringModels.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\VolumeRendering\VPTRTTechnique.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DebugDF_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldInitial_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\DistanceFieldSpread_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\NEECVAEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\STFPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\STFXPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\TriangleGrid_CS.hlsl" />
+    <FxCompile Include="Techniques\Pathtracing\NEEPathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\Pathtracing\Pathtracing_RT.hlsl" />
+    <FxCompile Include="Techniques\Examples\Basic_PS.hlsl" />
+    <FxCompile Include="Techniques\Examples\Basic_VS.hlsl" />
+    <FxCompile Include="Techniques\Examples\Counting_PS.hlsl" />
+    <FxCompile Include="Techniques\Examples\Demo_PS.hlsl" />
+    <FxCompile Include="Techniques\Examples\Demo_VS.hlsl" />
+    <FxCompile Include="Techniques\Examples\RTXSample_RT.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\VPT_CS.hlsl" />
+    <FxCompile Include="Techniques\CVAEPathtracing\CVAEST_RT.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\ComputeRadii_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\ConservativeRadiusAndPresample_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\VVis_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\ComputeDeep_CS.hlsl" />
+    <FxCompile Include="Techniques\VolumeRendering\VPTRT_CS.hlsl" />
+  </ItemGroup>
+</Project>
