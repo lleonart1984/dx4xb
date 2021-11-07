@@ -14,15 +14,15 @@ RWStructuredBuffer<uint> Gradients : register(u0);
 void SafeIncrementGradient(int pos, float increment) {
 	if (increment == 0)
 		return;
-	Gradients[pos] = asuint(asfloat(Gradients[pos]) + increment);
-	/*uint old = Gradients[pos];
+	//Gradients[pos] = asuint(asfloat(Gradients[pos]) + increment);
+	uint old = Gradients[pos];
 	uint assumed = old + 1;
 	[allow_uav_condition]
 	while (assumed != old)
 	{
 		assumed = Gradients[pos];
 		InterlockedCompareExchange(Gradients[pos], assumed, asuint(asfloat(assumed) + increment), old);
-	}*/
+	}
 }
 
 

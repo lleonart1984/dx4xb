@@ -242,7 +242,7 @@ public:
 
 		optimizer_pipeline->Gradients = gradients;
 		optimizer_pipeline->Parameters = parameters;
-		optimizer_pipeline->LR = 0.0001f;
+		optimizer_pipeline->LR = 0.00001f;
 
 		Execute_OnGPU(LoadAssets);
 	}
