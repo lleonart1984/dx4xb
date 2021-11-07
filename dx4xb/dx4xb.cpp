@@ -2266,6 +2266,7 @@ namespace dx4xb {
 	
 	void dx4xb::CopyManager::Copy(gObj<ResourceView> dst, gObj<ResourceView> src)
 	{
+		//auto prevState = dst->w_resource->LastUsageState;
 		dst->w_resource->AddBarrier(w_cmdList->cmdList,
 			D3D12_RESOURCE_STATE_COPY_DEST);
 		src->w_resource->AddBarrier(w_cmdList->cmdList,
@@ -2273,6 +2274,8 @@ namespace dx4xb {
 		w_cmdList->cmdList->CopyResource(
 			dst->w_resource->resource,
 			src->w_resource->resource);
+		/*dst->w_resource->AddBarrier(w_cmdList->cmdList,
+			prevState);*/
 	}
 
 	void dx4xb::CopyManager::Copy(gObj<Buffer> dst, int dstOffset, gObj<Buffer> src, int srcOffset, int numberOfBytes)
@@ -4059,7 +4062,7 @@ namespace dx4xb {
 		if (count == 0) return nullptr;
 		D3D12_RESOURCE_DESC desc = { };
 		FillBufferDescription(desc, elementStride * count, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
-		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		return CreateResourceView<Buffer>(desc, elementStride, count, D3D12_RESOURCE_STATE_COPY_DEST);
 	}
 
 	gObj<Texture1D> dx4xb::DeviceManager::CreateTexture1DSRV(DXGI_FORMAT format, int width, int mips, int arrayLength)

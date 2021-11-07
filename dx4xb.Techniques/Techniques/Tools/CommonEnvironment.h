@@ -43,7 +43,7 @@ float3 SampleSkybox(float3 L) {
 #ifdef USE_SKYBOX
 	return col;
 #else
-	return 0;
+	return 1;
 #endif
 }
 
@@ -92,7 +92,7 @@ float3 SampleSkybox(float3 P, float3 L) {
 #ifdef USE_SKYBOX
 	return col;
 #else
-	return 0;
+	return 1.0;
 #endif
 }
 

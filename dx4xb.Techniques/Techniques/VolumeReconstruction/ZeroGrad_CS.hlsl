@@ -2,7 +2,7 @@
 Reset gradient to 0.
 */
 
-RWStructuredBuffer<int> Gradient : register(u0);
+RWStructuredBuffer<uint> Gradient : register(u0);
 
 [numthreads(1024, 1, 1)]
 void main( uint3 DTid : SV_DispatchThreadID )

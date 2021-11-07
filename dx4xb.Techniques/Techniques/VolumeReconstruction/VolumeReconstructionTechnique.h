@@ -1,3 +1,5 @@
+#include <vector>
+
 class VolumeReconstructionTechnique : public Technique, public IManageScene, public IGatherImageStatistics {
 
 	struct VR_Pipeline : public ComputePipeline {
@@ -42,6 +44,12 @@ class VolumeReconstructionTechnique : public Technique, public IManageScene, pub
 		}
 	};
 
+	struct PTResult {
+		float3 Origin;
+		float3 Direction;
+		float3 Radiance;
+	};
+
 	struct FB_Pipeline : public ComputePipeline {
 
 		void Setup() {
@@ -49,7 +57,7 @@ class VolumeReconstructionTechnique : public Technique, public IManageScene, pub
 		}
 
 		gObj<Buffer> Parameters;
-		gObj<Texture2D> Image;
+		gObj<Buffer> Samples;
 		gObj<Buffer> Gradients;
 		
 		gObj<Buffer> FixCamera;
@@ -66,7 +74,7 @@ class VolumeReconstructionTechnique : public Technique, public IManageScene, pub
 		virtual void Bindings(gObj<ComputeBinder> binder) {
 			binder->Space(0);
 			binder->SRV(0, Parameters);
-			binder->SRV(1, Image);
+			binder->SRV(1, Samples);
 
 			binder->CBV(0, FixCamera);
 			binder->CBV(1, AccumulativeInfo);
@@ -141,6 +149,48 @@ public:
 	gObj<Buffer> parameters;
 	gObj<Buffer> gradients;
 
+	gObj<Buffer> LoadSamples() {
+		std::vector<std::string> files = {
+			"C:/Users/mendez/Documents/Datasets/Transmittance/camera_0.bin",
+			//"C:/Users/mendez/Documents/Datasets/Transmittance/camera_1.bin",
+			"C:/Users/mendez/Documents/Datasets/Transmittance/camera_2.bin",
+			//"C:/Users/mendez/Documents/Datasets/Transmittance/camera_3.bin",
+			"C:/Users/mendez/Documents/Datasets/Transmittance/camera_4.bin",
+			//"C:/Users/mendez/Documents/Datasets/Transmittance/camera_5.bin",
+			"C:/Users/mendez/Documents/Datasets/Transmittance/camera_top.bin",
+			"C:/Users/mendez/Documents/Datasets/Transmittance/camera_bottom.bin",
+		};
+
+		std::vector<PTResult> samples;
+
+		for (auto filename : files) {
+			FILE* f;
+			if (fopen_s(&f, filename.c_str(), "rb"))
+				throw Exception::FromError(Errors::Invalid_Operation, "Dataset file not found");
+
+			int width, height;
+			fread_s(&width, 4, 4, 1, f);
+			fread_s(&height, 4, 4, 1, f);
+
+			int N = width * height;
+			for (int i = 0; i < N; i++)
+			{
+				float row[10];
+				fread_s(row, 40, 4, 10, f);
+				PTResult entry;
+				entry.Origin = float3(row[0], row[1], row[2]);
+				entry.Direction = float3(row[3], row[4], row[5]);
+				entry.Radiance = float4(row[8], row[7], row[6], row[9]);
+				samples.push_back(entry);
+			}
+			fclose(f);
+		}
+		gObj<Buffer> result = CreateBufferSRV<PTResult>(samples.size());
+		result->Write((byte*)samples.data());
+
+		return result;
+	}
+
 	virtual void OnLoad() override {
 
 		Load(view_pipeline); // loads the pipeline.
@@ -148,16 +198,16 @@ public:
 		Load(zerograd_pipeline);
 		Load(optimizer_pipeline);
 
-		parameters = CreateBufferUAV<float>(3 + 256 * 256 * 256);
-		gradients = CreateBufferUAV<int>(3 + 256 * 256 * 256);
-		float* initial_parameters = new float[3 + 256 * 256 * 256];
-		initial_parameters[0] = 100.0f; // initial majorant
-		initial_parameters[1] = 1.0f; // initial albedo
-		initial_parameters[2] = 0.875f*0.3f; // initial gfactor
-		for (int i = 0; i < 256 * 256 * 256; i++)
-			initial_parameters[i + 3] = 0.0f; // initial densities
+		parameters = CreateBufferUAV<float>(RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE);
+		gradients = CreateBufferUAV <uint> (RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE);
+		float* initial_parameters = new float[RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE];
+		//initial_parameters[0] = 100.0f; // initial majorant
+		//initial_parameters[1] = 1.0f; // initial albedo
+		//initial_parameters[2] = 0.875f*0.6f; // initial gfactor
+		for (int i = 0; i < RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE; i++)
+			initial_parameters[i] = 0.0 * rand() / (float)RAND_MAX;// 0.05 * rand() / (float)RAND_MAX; // initial densities
 		parameters->Write(initial_parameters);
-		delete initial_parameters;
+		delete[] initial_parameters;
 
 		view_pipeline->Parameters = parameters;
 		
@@ -186,13 +236,13 @@ public:
 		fb_pipeline->RngStates = view_pipeline->RngStates;
 		fb_pipeline->Parameters = parameters;
 		fb_pipeline->Gradients = gradients;
-		fb_pipeline->Image = LoadTexture2D("C:/Users/mendez/Desktop/clouds/reference.png");
+		fb_pipeline->Samples = LoadSamples();
 
 		zerograd_pipeline->Gradients = gradients;
 
 		optimizer_pipeline->Gradients = gradients;
 		optimizer_pipeline->Parameters = parameters;
-		optimizer_pipeline->LR = 0.01f;
+		optimizer_pipeline->LR = 0.0001f;
 
 		Execute_OnGPU(LoadAssets);
 	}
@@ -202,7 +252,7 @@ public:
 		
 		manager->ToGPU(parameters);
 
-		manager->ToGPU(fb_pipeline->Image);
+		manager->ToGPU(fb_pipeline->Samples);
 
 		float4x4 proj, view;
 		scene->getCamera().GetMatrices(CurrentRenderTarget()->Width(), CurrentRenderTarget()->Height(), view, proj);
@@ -218,19 +268,16 @@ public:
 
 		UpdateBuffers(manager, elements);
 
-		for (int epoch = 0; epoch < 1; epoch++) {
+		/*for (int epoch = 0; epoch < 40; epoch++) {
+			fb_pipeline->AccumulativeInfo.Pass++;
 			manager->SetPipeline(zerograd_pipeline);
-			manager->Dispatch((int)ceil((3 + 256 * 256 * 256) / 1024.0));
-
+			manager->Dispatch((int)ceil((RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE) / 1024.0));
 			manager->SetPipeline(fb_pipeline);
-			for (int k = 0; k < 100; k++)
-			{
-				fb_pipeline->AccumulativeInfo.Pass++;
-				manager->Dispatch((int)ceil(fb_pipeline->Image->Width() / 32.0), (int)ceil(fb_pipeline->Image->Height() / 32.0));
-			}
+			manager->Dispatch((int)ceil(fb_pipeline->Samples->ElementCount() / 1024.0));
 			manager->SetPipeline(optimizer_pipeline);
-			manager->Dispatch((int)ceil((3 + 256 * 256 * 256) / 1024.0));
-		}
+			manager->Dispatch((int)ceil((RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE) / 1024.0));
+			optimizer_pipeline->LR *= 0.999;
+		}*/
 	}
 
 	virtual void UpdateBuffers(gObj<GraphicsManager> manager, SceneElement elements) {
@@ -279,6 +326,18 @@ public:
 
 			manager->ClearUAV(view_pipeline->Accumulation, uint4(0));
 			manager->ClearUAV(view_pipeline->Complexity, uint4(0));
+		}
+
+		//if (view_pipeline->AccumulativeInfo.Pass == 0) 
+		{
+			manager->SetPipeline(zerograd_pipeline);
+			manager->Dispatch((int)ceil((RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE) / 1024.0));
+			manager->SetPipeline(fb_pipeline);
+			manager->Dispatch((int)ceil(fb_pipeline->Samples->ElementCount() / 1024.0));
+			manager->SetPipeline(optimizer_pipeline);
+			manager->Dispatch((int)ceil((RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE * RECONSTRUCTION_MAX_SIZE) / 1024.0));
+			optimizer_pipeline->LR *= 0.999;
+			fb_pipeline->AccumulativeInfo.Pass++;
 		}
 
 		manager->SetPipeline(view_pipeline);

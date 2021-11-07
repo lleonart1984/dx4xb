@@ -24,4 +24,6 @@
 
 #define VOXEL_SIZE (1 << VOXEL_LOD)
 
+#define RECONSTRUCTION_MAX_SIZE 64
+
 #endif

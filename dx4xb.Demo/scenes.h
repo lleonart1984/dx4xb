@@ -1257,18 +1257,18 @@ public:
 	}
 	~DisneyCloudScene() {}
 
-	int cameraIndex = 5;
+	int cameraIndex = 4;
 
 	void SetupScene() {
 
 		//<lookat target = "6.021, 100.043, -43.679" origin = "648.064, -82.473, -63.856" up = "0.273, 0.962, -0.009" / >
 		camera.FoV = 54.43 * PI / 180;
-		//camera.Position = float3(sin(cameraIndex*2*3.14159/6), 0, cos(cameraIndex * 2 * 3.14159 / 6));
-		camera.Position = float3(648.064, -82.473, -63.856)/600 - float3(-9.984, 73.008, -42.64) / 600;
-		//camera.Target = float3(0, 0, 0);
-		camera.Target = float3(6.021, 100.043, -43.679)/ 600 - float3(-9.984, 73.008, -42.64) / 600;
-		//camera.Up = normalize(float3(0, 1, 0));
-		camera.Up = normalize(float3(0.273, 0.962, -0.009));
+		camera.Position = normalize(float3(sin((cameraIndex+0.5)*2*3.14159/6), 0, cos((cameraIndex + 0.5) * 2 * 3.14159 / 6)));
+		//camera.Position = float3(648.064, -82.473, -63.856)/600 - float3(-9.984, 73.008, -42.64) / 600;
+		camera.Target = float3(0, 0, 0);
+		//camera.Target = float3(6.021, 100.043, -43.679)/ 600 - float3(-9.984, 73.008, -42.64) / 600;
+		camera.Up = normalize(float3(0, 1, 0));
+		//camera.Up = normalize(float3(0.273, 0.962, -0.009));
 		camera.NearPlane = 0.01f;
 		camera.FarPlane = 100;
 
@@ -1297,8 +1297,8 @@ public:
 		scene->appendMaterial(SceneMaterial());
 		int volMat = scene->appendVolumeMaterial(VolumeMaterial{
 				float3(1, 1, 1) * 100, // sigma
-				float3(1, 1, 1),
-				float3(0.875, 0.875, 0.875)*0.3
+				float3(1, 1, 1)*0.0,
+				float3(0.875, 0.875, 0.875)*0.6
 			});
 
 		//<shape type = "cube">

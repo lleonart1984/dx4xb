@@ -23,7 +23,7 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{4d593767-1f40-4848-80d7-0e6c28a7d837}</ProjectGuid>
     <RootNamespace>dx4xbTechniques</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.19041.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -197,6 +197,7 @@
     <ClInclude Include="Techniques\Tools\Parameters.h" />
     <ClInclude Include="Techniques\Tools\PerlinNoise.h" />
     <ClInclude Include="Techniques\Tools\Randoms.h" />
+    <ClInclude Include="Techniques\Tools\RandomsLight.h" />
     <ClInclude Include="Techniques\Tools\Scattering.h" />
     <ClInclude Include="Techniques\VolumePathtracing\CacheRadiiAndAverage_Pipeline.h" />
     <ClInclude Include="Techniques\VolumePathtracing\ComputeCellInfo_Pipeline.h" />

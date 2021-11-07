@@ -222,6 +222,9 @@
     <ClInclude Include="Techniques\VolumeReconstruction\VolumeReconstructionTechnique.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Techniques\Tools\RandomsLight.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">

@@ -2,12 +2,12 @@
 
 StructuredBuffer<float> Parameters : register(t0);
 
-#define MAJORANT_OFFSET 0
-#define ALBEDO_OFFSET 1
-#define GFACTOR_OFFSET 2
-#define DENSITY_OFFSET 3
+//#define MAJORANT_OFFSET 0
+//#define ALBEDO_OFFSET 1
+//#define GFACTOR_OFFSET 2
+#define DENSITY_OFFSET 0
 
-#define GRID_SIZE 256
+#define GRID_SIZE RECONSTRUCTION_MAX_SIZE
 
 cbuffer Camera : register(b0) {
 	float4x4 FromProjectionToWorld;
@@ -131,6 +131,11 @@ float SampleGrid(float3 P) {
 	return saturate(Parameters[DENSITY_OFFSET + index]);
 }
 
+float SampleGrid(int3 coord) {
+	int index = coord.z * (GRID_SIZE * GRID_SIZE) + coord.y * GRID_SIZE + coord.x;
+	return saturate(Parameters[DENSITY_OFFSET + index]);
+}
+
 float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 {
 	float2x3 C = float2x3(bMin - x, bMax - x);
@@ -140,9 +145,9 @@ float BoxExit(float3 bMin, float3 bMax, float3 x, float3 w)
 }
 
 void PTStep(inout float T, inout float3 x, inout float3 w, inout float3 B, float xi1, float xi2, float xi3, float xi4, out float t, out bool scatter) {
-	float majorant = Parameters[MAJORANT_OFFSET];
-	float g = Parameters[GFACTOR_OFFSET];
-	float albedo = Parameters[ALBEDO_OFFSET];
+	float majorant = 100;// Parameters[MAJORANT_OFFSET];
+	float g = 0.875 * 0.6;// Parameters[GFACTOR_OFFSET];
+	float albedo = 1.0;// Parameters[ALBEDO_OFFSET];
 
 	float3 xi = x;
 	float3 wi = w;
@@ -211,13 +216,55 @@ float3 Pathtrace(float3 x, float3 w)
 {
 	float tMin, tMax;
 	if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
-		return (SampleSkybox(x, w) + SampleLight(w));
+		return 0;// (SampleSkybox(x, w) + SampleLight(w));
 	float d = tMax - tMin;
 	x += w * tMin;
+	float3 win = w;
 	float T = BoxTransmittance(x, w);
-	float3 sky = SampleSkybox(x, w);
-	return T * (sky + SampleLight(w));
+	float3 sky = 0;// SampleSkybox(x, w);
+	return T * (sky + any(win-w)*SampleLight(w));
 	//return lerp(float3(1, 0, 0), float3(0, 1, 0), pdf * 0.5);
+}
+
+float ComputeTransmittance(float3 x, float3 w) {
+	float tMin, tMax;
+	if (!BoxIntersect(Grid_Min, Grid_Max, x, w, tMin, tMax))
+		return 1;
+	float majorant = 100;// Parameters[MAJORANT_OFFSET];
+	float d = tMax - tMin;
+	x += w * tMin;
+
+	int3 v = (x - Grid_Min) * GRID_SIZE / (Grid_Max - Grid_Min);
+	float3 alpha_inc = 1 / (GRID_SIZE * max(0.000001, abs(w)));
+	float3 side = w >= 0;
+	float3 corner = (v + side) * (Grid_Max - Grid_Min) / GRID_SIZE + Grid_Min;
+	float3 alpha = abs(corner - x) / max(0.000001, abs(w));
+
+	float current_t = 0; 
+
+	float tao = 0;
+
+	int step = 0;
+	while (current_t < d && step++ < 100) {
+		float next_t = min(alpha.x, min(alpha.y, alpha.z));
+		int3 v_inc = int3(
+			alpha.x <= alpha.y && alpha.x <= alpha.z,
+			alpha.x > alpha.y && alpha.y <= alpha.z,
+			alpha.x > alpha.z && alpha.y > alpha.z);
+		float dt = next_t - current_t;
+
+		tao += SampleGrid(v) * majorant * dt;
+
+		alpha += v_inc * alpha_inc;
+		v += v_inc * (w >= 0 ? 1 : -1);
+		current_t = next_t;
+	}
+
+	return exp(-tao);
+}
+
+float3 Transmittance(float3 x, float3 w) {
+	return ComputeTransmittance(x,w) * (SampleSkybox(x,w));
 }
 
 [numthreads(32, 32, 1)]
@@ -246,7 +293,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 
 	complexity = 0;
 
-	float3 radiance = Pathtrace(O, D);
+	float3 radiance = Transmittance(O, D);
 
 	AccumulateOutput(DTid.xy, radiance, complexity);
 }
